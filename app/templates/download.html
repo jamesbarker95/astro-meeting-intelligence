@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astro - Download Desktop App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 700px;
+            width: 100%;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 1.1rem;
+        }
+        
+        .download-section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .download-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        
+        .download-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            border-radius: 15px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px;
+            transition: transform 0.2s ease;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .download-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .download-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+        
+        .status.generating {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .instructions {
+            background: #e8f4fd;
+            border-left: 4px solid #007bff;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 0 10px 10px 0;
+        }
+        
+        .instructions h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .instructions ol {
+            color: #666;
+            line-height: 1.6;
+        }
+        
+        .instructions li {
+            margin-bottom: 8px;
+        }
+        
+        .config-preview {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .config-preview h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .config-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid #e1e5e9;
+        }
+        
+        .config-item:last-child {
+            border-bottom: none;
+        }
+        
+        .config-label {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .config-value {
+            color: #666;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
+        .back-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1rem;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px;
+            transition: transform 0.2s ease;
+        }
+        
+        .back-btn:hover {
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Astro Desktop App</h1>
+            <p>Your customized meeting intelligence application is ready!</p>
+        </div>
+        
+        <div class="config-preview">
+            <h3>Your Configuration</h3>
+            <div class="config-item">
+                <span class="config-label">Salesforce Client ID:</span>
+                <span class="config-value">{{ config.salesforce_client_id[:10] }}...</span>
+            </div>
+            <div class="config-item">
+                <span class="config-label">Slack Client ID:</span>
+                <span class="config-value">{{ config.slack_client_id[:10] }}...</span>
+            </div>
+            <div class="config-item">
+                <span class="config-label">Deepgram API Key:</span>
+                <span class="config-value">{{ config.deepgram_api_key[:10] }}...</span>
+            </div>
+            <div class="config-item">
+                <span class="config-label">Slack Channel:</span>
+                <span class="config-value">{{ config.slack_channel }}</span>
+            </div>
+        </div>
+        
+        <div class="download-section">
+            <h2>Download Your Desktop App</h2>
+            <p style="margin-bottom: 20px; color: #666;">
+                This will generate a customized Astro application with your credentials embedded.
+            </p>
+            
+            <div id="status" class="status generating" style="display: none;">
+                Generating your customized app...
+            </div>
+            
+            <button id="generateBtn" class="download-btn" onclick="generateApp()">
+                🔧 Generate & Download Astro App
+            </button>
+            
+            <div id="downloadBtn" class="download-btn" style="display: none;" onclick="downloadApp()">
+                📥 Download Astro.dmg
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h3>Installation Instructions:</h3>
+            <ol>
+                <li>Download the Astro.dmg file</li>
+                <li>Double-click the .dmg file to mount it</li>
+                <li>Drag Astro to your Applications folder</li>
+                <li>Launch Astro from your Applications folder</li>
+                <li>Grant necessary permissions when prompted</li>
+                <li>Authenticate with Salesforce and Slack</li>
+                <li>Start your first meeting session!</li>
+            </ol>
+        </div>
+        
+        <div style="text-align: center;">
+            <a href="{{ url_for('config') }}" class="back-btn">
+                ← Back to Configuration
+            </a>
+        </div>
+    </div>
+    
+    <script>
+        function generateApp() {
+            const statusDiv = document.getElementById('status');
+            const generateBtn = document.getElementById('generateBtn');
+            const downloadBtn = document.getElementById('downloadBtn');
+            
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'status generating';
+            statusDiv.textContent = 'Generating your customized app...';
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+            
+            // Simulate app generation (in real implementation, this would call your backend)
+            setTimeout(() => {
+                statusDiv.className = 'status success';
+                statusDiv.textContent = 'App generated successfully!';
+                generateBtn.style.display = 'none';
+                downloadBtn.style.display = 'inline-block';
+            }, 3000);
+        }
+        
+        function downloadApp() {
+            // In a real implementation, this would trigger the actual download
+            alert('Download functionality will be implemented when the Electron app is ready!');
+        }
+    </script>
+</body>
+</html>

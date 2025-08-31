@@ -1,270 +1,334 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import { AuthManager } from './auth/auth-manager';
-import { WebSocketManager } from './websocket/websocket-manager';
-import { AudioManager } from './audio/audio-manager';
+import { WebSocketManager, WebSocketEvents } from './websocket/websocket-manager';
+import { AudioManager } from './audio-manager';
+
 
 class MainProcess {
-    private mainWindow: BrowserWindow | null = null;
-    private authManager: AuthManager;
-    private websocketManager: WebSocketManager;
-    private audioManager: AudioManager;
+  private mainWindow: BrowserWindow | null = null;
+  private authManager: AuthManager;
+  private websocketManager: WebSocketManager;
+  private audioManager: AudioManager;
 
-    constructor() {
-        this.authManager = new AuthManager();
-        this.websocketManager = new WebSocketManager(this.createWebSocketEvents());
-        this.audioManager = new AudioManager();
-        
-        this.setupAppEvents();
-        this.setupIpcHandlers();
-        this.setupAudioEvents();
-    }
 
-    private createWebSocketEvents() {
-        return {
-            onConnect: () => {
-                console.log('WebSocket connected');
-                this.mainWindow?.webContents.send('websocket-connected');
-            },
-            onDisconnect: () => {
-                console.log('WebSocket disconnected');
-                this.mainWindow?.webContents.send('websocket-disconnected');
-            },
-            onError: (error: string) => {
-                console.error('WebSocket error:', error);
-                this.mainWindow?.webContents.send('websocket-error', error);
-            },
-            onSessionCreated: (session: any) => {
-                console.log('Session created:', session);
-                this.mainWindow?.webContents.send('session-created', session);
-            },
-            onSessionStarted: (session: any) => {
-                console.log('Session started:', session);
-                this.mainWindow?.webContents.send('session-started', session);
-            },
-            onSessionEnded: (session: any) => {
-                console.log('Session ended:', session);
-                this.mainWindow?.webContents.send('session-ended', session);
-            },
-            onTranscriptLine: (text: string) => {
-                console.log('Transcript line:', text);
-                this.mainWindow?.webContents.send('transcript-line', text);
-            }
-        };
-    }
+  constructor() {
+    this.authManager = new AuthManager();
+    
+    // Create WebSocket events handler
+    const websocketEvents: WebSocketEvents = {
+      onConnect: () => {
+        console.log('WebSocket connected');
+        this.mainWindow?.webContents.send('websocket-connected');
+      },
+      onDisconnect: () => {
+        console.log('WebSocket disconnected');
+        this.mainWindow?.webContents.send('websocket-disconnected');
+      },
+      onError: (error: string) => {
+        console.error('WebSocket error:', error);
+        this.mainWindow?.webContents.send('websocket-error', error);
+      },
+      onSessionCreated: (session: any) => {
+        console.log('Session created:', session);
+        this.mainWindow?.webContents.send('session-created', session);
+      },
+      onSessionStarted: (session: any) => {
+        console.log('Session started:', session);
+        this.mainWindow?.webContents.send('session-started', session);
+      },
+      onSessionEnded: (session: any) => {
+        console.log('Session ended:', session);
+        this.mainWindow?.webContents.send('session-ended', session);
+      },
+      onTranscriptLine: (text: string) => {
+        console.log('Transcript line:', text);
+        this.mainWindow?.webContents.send('transcript-line', text);
+      }
+    };
+    
+    this.websocketManager = new WebSocketManager(websocketEvents);
+    this.audioManager = new AudioManager();
+    
+    this.setupAppEvents();
+    this.setupIpcHandlers();
+    this.setupAudioEvents();
+    this.initializeAudioManager();
+  }
 
-    private setupAppEvents(): void {
-        app.whenReady().then(() => {
-            this.createWindow();
-            
-            app.on('activate', () => {
-                if (BrowserWindow.getAllWindows().length === 0) {
-                    this.createWindow();
-                }
-            });
-        });
+  private setupAppEvents(): void {
+    app.whenReady().then(() => {
+      this.createWindow();
+      
+      app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          this.createWindow();
+        }
+      });
+    });
 
-        app.on('window-all-closed', () => {
-            if (process.platform !== 'darwin') {
-                app.quit();
-            }
-        });
+    app.on('window-all-closed', () => {
+      if (process.platform !== 'darwin') {
+        app.quit();
+      }
+    });
+  }
 
-        // Handle custom protocol
-        app.setAsDefaultProtocolClient('astro');
-    }
+  private createWindow(): void {
+    try {
+      console.log('Creating main window...');
+      console.log('Current directory:', __dirname);
+      console.log('Preload script path:', path.join(__dirname, 'preload.js'));
+      console.log('HTML file path:', path.join(__dirname, '..', 'renderer', 'index.html'));
+      
+      this.mainWindow = new BrowserWindow({
+        width: 1200,
+        height: 800,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          preload: path.join(__dirname, 'preload.js')
+        }
+      });
 
-    private createWindow(): void {
-        this.mainWindow = new BrowserWindow({
-            width: 1200,
-            height: 800,
-            webPreferences: {
-                nodeIntegration: false,
-                contextIsolation: true,
-                preload: path.join(__dirname, 'preload.js')
-            }
-        });
+      console.log('BrowserWindow created successfully');
 
-        this.mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-        
-        // Open DevTools for debugging
+      this.mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+      console.log('HTML file loaded');
+
+      // Open developer tools in development mode
+      if (process.env['NODE_ENV'] === 'development' || process.argv.includes('--dev')) {
         this.mainWindow.webContents.openDevTools();
+        console.log('Developer tools opened');
+      }
 
-        // Handle external links
-        this.mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-            shell.openExternal(url);
-            return { action: 'deny' };
+      // Open external links in default browser
+      this.mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        shell.openExternal(url);
+        return { action: 'deny' };
+      });
+
+      // Add error handlers for the window
+      this.mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+        console.error('Window failed to load:', {
+          errorCode,
+          errorDescription,
+          validatedURL
         });
+      });
+
+      this.mainWindow.webContents.on('crashed', (_event) => {
+        console.error('Renderer process crashed');
+      });
+
+      this.mainWindow.on('unresponsive', () => {
+        console.error('Window became unresponsive');
+      });
+
+      console.log('Window creation completed successfully');
+      
+    } catch (error) {
+      console.error('Error creating window:', error);
+      throw error;
     }
+  }
 
-    private setupIpcHandlers(): void {
-        // Auth handlers
-        ipcMain.handle('auth:salesforce', async () => {
-            try {
-                console.log('IPC: auth:salesforce called');
-                const authUrl = await this.authManager.getSalesforceAuthUrl();
-                console.log('Salesforce auth URL:', authUrl);
-                
-                // Open the URL in the default browser
-                await shell.openExternal(authUrl);
-                
-                return { success: true, url: authUrl };
-            } catch (error) {
-                console.error('Salesforce auth error:', (error as Error).message);
-                return { success: false, error: (error as Error).message };
-            }
-        });
+  private setupIpcHandlers(): void {
+    // Auth handlers
+    ipcMain.handle('auth:salesforce', async () => {
+      try {
+        const authUrl = this.authManager.getSalesforceAuthUrl();
+        await shell.openExternal(authUrl);
+        return { success: true, url: authUrl };
+      } catch (error) {
+        console.error('Salesforce auth error:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    });
 
-        ipcMain.handle('auth:slack', async () => {
-            try {
-                console.log('IPC: auth:slack called');
-                const authUrl = await this.authManager.getSlackAuthUrl();
-                console.log('Slack auth URL:', authUrl);
-                
-                // Open the URL in the default browser
-                await shell.openExternal(authUrl);
-                
-                return { success: true, url: authUrl };
-            } catch (error) {
-                console.error('Slack auth error:', (error as Error).message);
-                return { success: false, error: (error as Error).message };
-            }
-        });
+    ipcMain.handle('auth:slack', async () => {
+      try {
+        const authUrl = this.authManager.getSlackAuthUrl();
+        await shell.openExternal(authUrl);
+        return { success: true, url: authUrl };
+      } catch (error) {
+        console.error('Slack auth error:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    });
 
-        ipcMain.handle('auth:check-status', async () => {
-            try {
-                const tokens = await this.authManager.getStoredTokens();
-                return {
-                    salesforce: !!tokens.salesforce,
-                    slack: !!tokens.slack
-                };
-            } catch (error) {
-                console.error('Error checking auth status:', error);
-                return {
-                    salesforce: false,
-                    slack: false
-                };
-            }
-        });
+    ipcMain.handle('auth:status', async () => {
+      try {
+        const tokens = await this.authManager.getStoredTokens();
+        return {
+          salesforce: !!tokens.salesforce,
+          slack: !!tokens.slack
+        };
+      } catch (error) {
+        console.error('Auth status error:', error);
+        return { salesforce: false, slack: false };
+      }
+    });
 
-        // WebSocket handlers
-        ipcMain.handle('websocket:connect', async () => {
-            try {
-                const result = await this.websocketManager.connect('https://astro-meetings-918feccd1cb1.herokuapp.com');
-                return { success: result, error: null };
-            } catch (error) {
-                console.error('WebSocket connection error:', error);
-                return { success: false, error: (error as Error).message };
-            }
-        });
+    // WebSocket handlers
+    ipcMain.handle('websocket:connect', async () => {
+      try {
+        await this.websocketManager.connect('https://astro-meetings-918feccd1cb1.herokuapp.com');
+        return { success: true };
+      } catch (error) {
+        console.error('WebSocket connect error:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    });
 
-        ipcMain.handle('websocket:disconnect', async () => {
-            return await this.websocketManager.disconnect();
-        });
+    ipcMain.handle('websocket:create-session', async () => {
+      try {
+        const sessionId = await this.websocketManager.createSession();
+        return { success: true, sessionId };
+      } catch (error) {
+        console.error('Create session error:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    });
 
-        ipcMain.handle('websocket:send', async (_event, data) => {
-            return await this.websocketManager.sendTranscriptLine(data);
-        });
+    ipcMain.handle('websocket:start-session', async (_event, sessionId?: string) => {
+      try {
+        if (!sessionId) {
+          // Get the current session ID from the WebSocket manager
+          const currentSessionId = this.websocketManager.getCurrentSessionId();
+          if (!currentSessionId) {
+            return { success: false, error: 'No session ID available' };
+          }
+          sessionId = currentSessionId;
+        }
+        await this.websocketManager.startSession(sessionId);
+        return { success: true };
+      } catch (error) {
+        console.error('Start session error:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    });
 
-        // Session handlers
-        ipcMain.handle('session:start', async () => {
-            return await this.websocketManager.startSession('new-session');
-        });
+    ipcMain.handle('websocket:end-session', async (_event, sessionId?: string) => {
+      try {
+        if (!sessionId) {
+          // Get the current session ID from the WebSocket manager
+          const currentSessionId = this.websocketManager.getCurrentSessionId();
+          if (!currentSessionId) {
+            return { success: false, error: 'No session ID available' };
+          }
+          sessionId = currentSessionId;
+        }
+        await this.websocketManager.endSession(sessionId);
+        return { success: true };
+      } catch (error) {
+        console.error('End session error:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    });
 
-        ipcMain.handle('session:end', async () => {
-            return await this.websocketManager.endSession('current-session');
-        });
+    // Audio handlers
+    ipcMain.handle('audio:initialize', async () => {
+      try {
+        console.log('MainProcess: Received audio:initialize request');
+        await this.audioManager.initialize();
+        console.log('MainProcess: Audio manager initialized successfully');
+        return { success: true };
+      } catch (error) {
+        console.error('MainProcess: Audio initialization failed:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    });
 
-        // Session management handlers
-        ipcMain.handle('createSession', async () => {
-            try {
-                const session = await this.websocketManager.createSession();
-                return { success: true, session };
-            } catch (error) {
-                console.error('Create session error:', error);
-                return { success: false, error: (error as Error).message };
-            }
-        });
+    ipcMain.handle('audio:start', async () => {
+      try {
+        console.log('MainProcess: Received audio:start request');
+        await this.audioManager.startAudioCapture();
+        console.log('MainProcess: Audio capture started successfully');
+        return { success: true };
+      } catch (error) {
+        console.error('MainProcess: Audio start failed:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    });
 
-        ipcMain.handle('startSession', async (_event, sessionId) => {
-            try {
-                const session = await this.websocketManager.startSession(sessionId);
-                return { success: true, session };
-            } catch (error) {
-                console.error('Start session error:', error);
-                return { success: false, error: (error as Error).message };
-            }
-        });
+    ipcMain.handle('audio:stop', async () => {
+      try {
+        this.audioManager.stopAudioCapture();
+        return { success: true };
+      } catch (error) {
+        console.error('Audio stop error:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    });
 
-        ipcMain.handle('endSession', async (_event, sessionId) => {
-            try {
-                const session = await this.websocketManager.endSession(sessionId);
-                return { success: true, session };
-            } catch (error) {
-                console.error('End session error:', error);
-                return { success: false, error: (error as Error).message };
-            }
-        });
+    ipcMain.handle('audio:status', async () => {
+      const status = this.audioManager.getStatus();
+      return { 
+        isCapturing: status.isCapturing,
+        isDeepgramConnected: false, // Deepgram is now handled separately
+        hasAudioSignal: status.hasAudioSignal,
+        audioLevel: status.audioLevel
+      };
+    });
 
-        // Audio handlers
-        ipcMain.handle('audio:setup', async () => {
-            return await this.audioManager.setupAudioDevices();
-        });
+    // Handle audio data from renderer
+    ipcMain.handle('audio:send-data', async (_event, audioData: ArrayBuffer) => {
+      try {
+        this.audioManager.receiveAudioData(audioData);
+        return { success: true };
+      } catch (error) {
+        console.error('Error processing audio data:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    });
 
-        ipcMain.handle('audio:start', async () => {
-            return await this.audioManager.startAudioCapture();
-        });
+    // Audio streaming to Heroku will be added here
+  }
 
-        ipcMain.handle('audio:stop', async () => {
-            this.audioManager.stopAudioCapture();
-            return { success: true };
-        });
+  private setupAudioEvents(): void {
+    this.audioManager.on('initialized', () => {
+      console.log('Audio manager initialized');
+    });
 
-        ipcMain.handle('audio:status', async () => {
-            return { isCapturing: this.audioManager.isCapturingAudio() };
-        });
+    this.audioManager.on('started', () => {
+      console.log('Audio transcription started');
+    });
 
-        // Audio chunk handler - send to backend via WebSocket
-        ipcMain.handle('audio:send-chunk', async (_event, audioData) => {
-            try {
-                // Send audio chunk to backend via WebSocket
-                const result = await this.websocketManager.sendAudioChunk(audioData);
-                return result;
-            } catch (error) {
-                console.error('Error sending audio chunk:', error);
-                throw error;
-            }
-        });
+    this.audioManager.on('stopped', () => {
+      console.log('Audio transcription stopped');
+    });
+
+    this.audioManager.on('error', (error) => {
+      console.error('Audio manager error:', error);
+    });
+
+    this.audioManager.on('transcript', (line) => {
+      console.log('Transcript received:', line);
+      this.websocketManager.sendTranscriptLine(line.text);
+      this.mainWindow?.webContents.send('transcript:line', line);
+    });
+
+    this.audioManager.on('deepgram-connected', () => {
+      console.log('Deepgram connected');
+    });
+
+    this.audioManager.on('deepgram-disconnected', () => {
+      console.log('Deepgram disconnected');
+    });
+  }
+
+
+
+  private async initializeAudioManager(): Promise<void> {
+    try {
+      console.log('MainProcess: Starting audio manager initialization...');
+      await this.audioManager.initialize();
+      console.log('MainProcess: Audio manager initialized with Deepgram');
+    } catch (error) {
+      console.error('MainProcess: Failed to initialize audio manager:', error);
     }
-
-    private setupAudioEvents(): void {
-        // Forward audio events to renderer
-        this.audioManager.on('started', () => {
-            this.mainWindow?.webContents.send('audio:started');
-        });
-
-        this.audioManager.on('stopped', () => {
-            this.mainWindow?.webContents.send('audio:stopped');
-        });
-
-        this.audioManager.on('error', (error) => {
-            this.mainWindow?.webContents.send('audio:error', error);
-        });
-
-        this.audioManager.on('audioChunk', (chunk) => {
-            // Forward audio chunk to renderer for processing
-            this.mainWindow?.webContents.send('audio:chunk', chunk);
-        });
-
-        this.audioManager.on('blackholeAvailable', () => {
-            this.mainWindow?.webContents.send('audio:blackhole-available');
-        });
-
-        this.audioManager.on('blackholeNotAvailable', () => {
-            this.mainWindow?.webContents.send('audio:blackhole-not-available');
-        });
-    }
+  }
 }
 
-// Start the main process
 new MainProcess();

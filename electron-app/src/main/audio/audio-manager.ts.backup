@@ -1,0 +1,101 @@
+import { EventEmitter } from 'events';
+import { DeepgramService, TranscriptLine } from '../services/deepgram-service';
+
+export interface AudioChunk {
+  audio: Buffer;
+  timestamp: number;
+  source: 'microphone' | 'system' | 'combined';
+}
+
+export class AudioManager extends EventEmitter {
+  private isCapturing = false;
+  private deepgramService: DeepgramService | null = null;
+
+  constructor() {
+    super();
+  }
+
+  async initialize(deepgramApiKey: string): Promise<void> {
+    try {
+      console.log('Initializing AudioManager with Deepgram...');
+      
+      // Initialize Deepgram service
+      this.deepgramService = new DeepgramService(deepgramApiKey);
+      
+      // Set up transcript callback
+      this.deepgramService.onTranscript((line: TranscriptLine) => {
+        console.log('Transcript received:', line);
+        this.emit('transcript', line);
+      });
+
+      // Connect to Deepgram
+      await this.deepgramService.connect();
+      
+      console.log('AudioManager initialized successfully');
+      this.emit('initialized');
+      
+    } catch (error) {
+      console.error('Error initializing AudioManager:', error);
+      this.emit('error', error);
+    }
+  }
+
+  async startAudioCapture(): Promise<void> {
+    try {
+      console.log('Starting audio capture...');
+      
+      if (!this.deepgramService) {
+        throw new Error('AudioManager not initialized. Call initialize() first.');
+      }
+
+      this.isCapturing = true;
+      console.log('Audio capture started successfully');
+      this.emit('started');
+      
+    } catch (error) {
+      console.error('Error starting audio capture:', error);
+      this.emit('error', error);
+    }
+  }
+
+  sendAudioToDeepgram(audioData: Buffer): void {
+    if (this.deepgramService && this.isCapturing) {
+      try {
+        this.deepgramService.sendAudio(audioData);
+      } catch (error) {
+        console.error('Error sending audio to Deepgram:', error);
+      }
+    }
+  }
+
+  stopAudioCapture(): void {
+    try {
+      console.log('Stopping audio capture...');
+      
+      // Disconnect from Deepgram
+      if (this.deepgramService) {
+        this.deepgramService.disconnect();
+      }
+      
+      this.isCapturing = false;
+      console.log('Audio capture stopped');
+      this.emit('stopped');
+      
+    } catch (error) {
+      console.error('Error stopping audio capture:', error);
+    }
+  }
+
+  isCapturingAudio(): boolean {
+    return this.isCapturing;
+  }
+
+  isDeepgramConnected(): boolean {
+    return this.deepgramService ? this.deepgramService.isConnectedToDeepgram() : false;
+  }
+
+  cleanup(): void {
+    this.stopAudioCapture();
+    this.removeAllListeners();
+  }
+}

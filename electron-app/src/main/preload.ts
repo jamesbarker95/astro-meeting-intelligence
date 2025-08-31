@@ -9,23 +9,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isWebSocketConnected: () => ipcRenderer.invoke('websocket:is-connected'),
   
   // Session methods
-  createSession: () => ipcRenderer.invoke('createSession'),
-  startSession: (sessionId: string) => ipcRenderer.invoke('startSession', sessionId),
-  endSession: (sessionId: string) => ipcRenderer.invoke('endSession', sessionId),
+  createSession: () => ipcRenderer.invoke('websocket:create-session'),
+  startSession: (sessionId?: string) => ipcRenderer.invoke('websocket:start-session', sessionId),
+  endSession: (sessionId?: string) => ipcRenderer.invoke('websocket:end-session', sessionId),
   
   // Auth methods
   authenticateSalesforce: () => ipcRenderer.invoke('auth:salesforce'),
   authenticateSlack: () => ipcRenderer.invoke('auth:slack'),
-  checkAuthStatus: () => ipcRenderer.invoke('auth:check-status'),
+  checkAuthStatus: () => ipcRenderer.invoke('auth:status'),
   
   // Audio methods
-  checkAudioSetup: () => ipcRenderer.invoke('audio:check-setup'),
-  runAudioSetup: () => ipcRenderer.invoke('audio:run-setup'),
-  startAudioCapture: () => ipcRenderer.invoke('audio:start-capture'),
-  stopAudioCapture: () => ipcRenderer.invoke('audio:stop-capture'),
-  isAudioCapturing: () => ipcRenderer.invoke('audio:is-capturing'),
-  getAudioConfig: () => ipcRenderer.invoke('audio:get-config'),
-  sendAudioChunk: (audioData: ArrayBuffer) => ipcRenderer.invoke('audio:send-chunk', audioData),
+  initializeAudio: () => ipcRenderer.invoke('audio:initialize'),
+  startAudioCapture: () => ipcRenderer.invoke('audio:start'),
+  stopAudioCapture: () => ipcRenderer.invoke('audio:stop'),
+  getAudioStatus: () => ipcRenderer.invoke('audio:status'),
+  sendAudioData: (audioData: ArrayBuffer) => ipcRenderer.invoke('audio:send-data', audioData),
+  
+  // Audio streaming to Heroku will be added here
   
   // Event listeners
   onWebSocketConnected: (callback: () => void) => {
@@ -37,8 +37,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onWebSocketError: (callback: (event: any, error: string) => void) => {
     ipcRenderer.on('websocket-error', callback);
   },
-  onSessionCreated: (callback: (event: any, session: any) => void) => {
-    ipcRenderer.on('session-created', callback);
+  onSessionCreated: (callback: (session: any) => void) => {
+    ipcRenderer.on('session-created', (_event, session) => {
+      callback(session);
+    });
   },
   onSessionStarted: (callback: (event: any, session: any) => void) => {
     ipcRenderer.on('session-started', callback);
@@ -46,29 +48,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSessionEnded: (callback: (event: any, session: any) => void) => {
     ipcRenderer.on('session-ended', callback);
   },
-  onTranscriptLine: (callback: (event: any, text: string) => void) => {
+  onTranscriptLine: (callback: (event: any, data: any) => void) => {
     ipcRenderer.on('transcript-line', callback);
+    ipcRenderer.on('transcript:line', callback);
   },
   
   // Audio event listeners
-  onAudioSetupProgress: (callback: (event: any, data: any) => void) => {
-    ipcRenderer.on('audio-setup-progress', callback);
+  onAudioInitialized: (callback: (event: any) => void) => {
+    ipcRenderer.on('audio:initialized', callback);
   },
-  onAudioSetupComplete: (callback: (event: any, data: any) => void) => {
-    ipcRenderer.on('audio-setup-complete', callback);
-  },
-  onAudioSetupError: (callback: (event: any, data: any) => void) => {
-    ipcRenderer.on('audio-setup-error', callback);
-  },
-  onAudioStarted: (callback: (event: any, data: any) => void) => {
-    ipcRenderer.on('audio-started', callback);
+  onAudioStarted: (callback: (event: any) => void) => {
+    ipcRenderer.on('audio:started', callback);
   },
   onAudioStopped: (callback: (event: any) => void) => {
-    ipcRenderer.on('audio-stopped', callback);
+    ipcRenderer.on('audio:stopped', callback);
   },
-  onAudioError: (callback: (event: any, data: any) => void) => {
-    ipcRenderer.on('audio-error', callback);
+  onAudioError: (callback: (event: any, error: any) => void) => {
+    ipcRenderer.on('audio:error', callback);
   },
+  
+  // Deepgram event listeners (isolated)
+  // Transcript events from Heroku will be added here
   
   // Main process command listeners
   onStartAudioCapture: (callback: (event: any) => void) => {
@@ -95,8 +95,8 @@ declare global {
       
       // Session methods
       createSession: () => Promise<any>;
-      startSession: (sessionId: string) => Promise<any>;
-      endSession: (sessionId: string) => Promise<any>;
+      startSession: (sessionId?: string) => Promise<any>;
+      endSession: (sessionId?: string) => Promise<any>;
       
       // Auth methods
       authenticateSalesforce: () => Promise<any>;
@@ -104,13 +104,11 @@ declare global {
       checkAuthStatus: () => Promise<any>;
       
       // Audio methods
-      checkAudioSetup: () => Promise<any>;
-      runAudioSetup: () => Promise<any>;
+      initializeAudio: () => Promise<any>;
       startAudioCapture: () => Promise<any>;
       stopAudioCapture: () => Promise<any>;
-      isAudioCapturing: () => Promise<boolean>;
-      getAudioConfig: () => Promise<any>;
-      sendAudioChunk: (audioData: ArrayBuffer) => Promise<any>;
+      getAudioStatus: () => Promise<any>;
+      sendAudioData: (audioData: ArrayBuffer) => Promise<any>;
       
       // Event listeners
       onWebSocketConnected: (callback: () => void) => void;
@@ -119,15 +117,13 @@ declare global {
       onSessionCreated: (callback: (event: any, session: any) => void) => void;
       onSessionStarted: (callback: (event: any, session: any) => void) => void;
       onSessionEnded: (callback: (event: any, session: any) => void) => void;
-      onTranscriptLine: (callback: (event: any, text: string) => void) => void;
+      onTranscriptLine: (callback: (event: any, data: any) => void) => void;
       
       // Audio event listeners
-      onAudioSetupProgress: (callback: (event: any, data: any) => void) => void;
-      onAudioSetupComplete: (callback: (event: any, data: any) => void) => void;
-      onAudioSetupError: (callback: (event: any, data: any) => void) => void;
-      onAudioStarted: (callback: (event: any, data: any) => void) => void;
+      onAudioInitialized: (callback: (event: any) => void) => void;
+      onAudioStarted: (callback: (event: any) => void) => void;
       onAudioStopped: (callback: (event: any) => void) => void;
-      onAudioError: (callback: (event: any, data: any) => void) => void;
+      onAudioError: (callback: (event: any, error: any) => void) => void;
       
       // Main process command listeners
       onStartAudioCapture: (callback: (event: any) => void) => void;

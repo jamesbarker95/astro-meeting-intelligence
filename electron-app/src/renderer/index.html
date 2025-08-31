@@ -4,6 +4,55 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Astro - Meeting Intelligence</title>
+    
+    <!-- Immediate error handling before JavaScript loads -->
+    <script>
+        // Catch errors immediately
+        window.addEventListener('error', function(event) {
+            console.error('Early error caught:', event.error);
+            document.body.innerHTML = `
+                <div style="padding: 20px; text-align: center; font-family: Arial, sans-serif; background: white; min-height: 100vh;">
+                    <h2>Early JavaScript Error Detected</h2>
+                    <p><strong>Error:</strong> ${event.message}</p>
+                    <p><strong>File:</strong> ${event.filename}</p>
+                    <p><strong>Line:</strong> ${event.lineno}</p>
+                    <p>This error occurred before the main application could load.</p>
+                </div>
+            `;
+        });
+        
+        // Catch unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Early promise rejection:', event.reason);
+            document.body.innerHTML = `
+                <div style="padding: 20px; text-align: center; font-family: Arial, sans-serif; background: white; min-height: 100vh;">
+                    <h2>Early Promise Rejection</h2>
+                    <p><strong>Error:</strong> ${event.reason}</p>
+                    <p>This error occurred before the main application could load.</p>
+                </div>
+            `;
+        });
+        
+        // Test if electronAPI is available immediately
+        window.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                if (typeof window.electronAPI === 'undefined') {
+                    console.error('electronAPI not available after DOM load');
+                    document.body.innerHTML = `
+                        <div style="padding: 20px; text-align: center; font-family: Arial, sans-serif; background: white; min-height: 100vh;">
+                            <h2>Electron API Not Available</h2>
+                            <p>The electronAPI is not available after the DOM loaded.</p>
+                            <p>This usually means the preload script failed to load or execute.</p>
+                            <p>Available window properties: ${Object.keys(window).join(', ')}</p>
+                        </div>
+                    `;
+                } else {
+                    console.log('electronAPI is available:', Object.keys(window.electronAPI));
+                }
+            }, 1000); // Check after 1 second
+        });
+    </script>
+    
     <style>
         * {
             margin: 0;
@@ -169,7 +218,7 @@
         }
 
         .audio-setup-section {
-            display: none;
+            display: block;
             margin-top: 20px;
             padding: 20px;
             background: #f8f9fa;
@@ -188,9 +237,31 @@
             display: none !important;
         }
 
+
+
         .loading {
             opacity: 0.6;
             pointer-events: none;
+        }
+
+        /* Ensure buttons are clickable */
+        .btn {
+            position: relative;
+            z-index: 10;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        .auth-buttons {
+            position: relative;
+            z-index: 10;
+            pointer-events: auto;
+        }
+
+        .audio-controls {
+            position: relative;
+            z-index: 10;
+            pointer-events: auto;
         }
 
         @media (max-width: 600px) {
@@ -241,27 +312,41 @@
             </button>
         </div>
 
-        <!-- Audio Setup Section -->
-        <div id="audio-setup-section" class="audio-setup-section">
-            <h3>Audio Setup Required</h3>
-            <div id="audio-status" class="status-message warning">
-                Audio setup required
+        <!-- Audio Controls Section -->
+        <div id="audio-controls-section" class="audio-setup-section">
+            <h3>Audio Capture</h3>
+            <div class="audio-controls">
+                <button id="audio-capture-btn" class="btn btn-primary">
+                    Start Audio Capture
+                </button>
+                <button id="audio-stop-btn" class="btn btn-danger hidden">
+                    Stop Audio Capture
+                </button>
             </div>
-            <button id="audio-setup-btn" class="btn btn-primary">
-                Run Audio Setup
-            </button>
         </div>
+
+
 
         <!-- Ready Section -->
         <div id="ready-section" class="ready-section">
             <h3>Ready to Start Meeting</h3>
             <div class="audio-controls">
-                <button id="audio-capture-btn" class="btn btn-primary">
-                    Start Audio
-                </button>
                 <button id="start-session-btn" class="btn btn-success">
                     Start Session
                 </button>
+                <button id="end-session-btn" class="btn btn-danger hidden">
+                    End Session
+                </button>
+            </div>
+        </div>
+
+        <!-- Transcript Section -->
+        <div id="transcript-section" class="audio-setup-section hidden">
+            <h3>Live Transcript</h3>
+            <div id="transcript-container" style="max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 14px;">
+                <div id="transcript-content">
+                    <!-- Transcript lines will appear here -->
+                </div>
             </div>
         </div>
     </div>

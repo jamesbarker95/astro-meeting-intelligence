@@ -1,156 +1,545 @@
-// Audio Manager Class
-class RendererAudioManager {
+// Audio Manager Class - Dual Stream (System + Microphone)
+class RendererAudioManager extends EventTarget {
   constructor() {
-    this.microphoneStream = null;
-    this.systemAudioStream = null;
-    this.combinedStream = null;
-    this.audioContext = null;
-    this.mediaRecorder = null;
+    super();
     this.isCapturing = false;
-    this.audioChunks = [];
-    this.chunkInterval = null;
+    this.isDeepgramConnected = false;
     
-    // Audio configuration
-    this.config = {
-      sampleRate: 16000, // Deepgram recommended
-      channels: 1, // Mono for transcription
-      bitDepth: 16,
-      chunkSize: 1024, // Audio chunk size
-      chunkInterval: 100 // Send chunks every 100ms
-    };
+    // System audio (BlackHole) stream
+    this.systemAudioContext = null;
+    this.systemMediaStream = null;
+    this.systemAudioLevel = 0;
+    this.systemHasSignal = false;
+    
+    // Microphone stream
+    this.micAudioContext = null;
+    this.micMediaStream = null;
+    this.micAudioLevel = 0;
+    this.micHasSignal = false;
+    
+    // Combined/legacy properties for compatibility
+    this.audioContext = null;
+    this.mediaStream = null;
+    this.scriptProcessor = null;
+    this.audioLevel = 0;
+    this.hasAudioSignal = false;
+    
+    // Audio streaming buffers (initialized when audio starts)
+    this.systemAudioBuffer = null;
+    this.systemBufferIndex = 0;
+    this.micAudioBuffer = null;
+    this.micBufferIndex = 0;
+  }
+
+  emit(eventName, data) {
+    this.dispatchEvent(new CustomEvent(eventName, { detail: data }));
+  }
+
+  async initializeAudio() {
+    return this.initializeAudioWithDevice();
+  }
+
+  async initializeAudioWithDevice(deviceId = null) {
+    // This method is now simplified - the main audio setup happens in handleStartAudioCapture
+    console.log('Audio manager initialized (stream will be set by handleStartAudioCapture)');
+    return true;
+  }
+
+  async startSystemAudioCapture(systemStream) {
+    try {
+      console.log('DEBUG: startSystemAudioCapture() called');
+      this.systemMediaStream = systemStream;
+      
+      if (!this.systemMediaStream) {
+        console.error('DEBUG: No system mediaStream available');
+        throw new Error('No system audio stream available');
+      }
+
+      console.log('DEBUG: System MediaStream tracks:', this.systemMediaStream.getTracks().length);
+      console.log('DEBUG: System Audio tracks:', this.systemMediaStream.getAudioTracks().length);
+
+      // Set up system audio level monitoring
+      if (this.systemMediaStream.getAudioTracks().length > 0) {
+        console.log('DEBUG: Setting up System AudioContext...');
+        
+        try {
+          // Create AudioContext for system audio
+          this.systemAudioContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: 16000
+          });
+          console.log('DEBUG: System AudioContext created, state:', this.systemAudioContext.state);
+          console.log('DEBUG: System AudioContext sample rate:', this.systemAudioContext.sampleRate);
+          
+          const source = this.systemAudioContext.createMediaStreamSource(this.systemMediaStream);
+          console.log('DEBUG: System MediaStreamSource created');
+          
+          const analyser = this.systemAudioContext.createAnalyser();
+          analyser.fftSize = 512;
+          analyser.minDecibels = -90;
+          analyser.maxDecibels = -10;
+          analyser.smoothingTimeConstant = 0.8;
+          source.connect(analyser);
+          console.log('DEBUG: System Analyser connected');
+          
+          // Set up system audio level monitoring and data collection
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          let frameCount = 0;
+          
+          // Initialize audio streaming buffer for system audio
+          this.systemAudioBuffer = new Float32Array(1024); // ~64ms at 16kHz
+          this.systemBufferIndex = 0;
+          
+          const updateSystemLevel = () => {
+            if (this.isCapturing) {
+              // Use time domain data for actual audio levels (not frequency data)
+              const timeDataArray = new Float32Array(analyser.frequencyBinCount);
+              analyser.getFloatTimeDomainData(timeDataArray);
+              
+              // Collect audio data for streaming (downsample for 16kHz)
+              const downsampleRatio = Math.max(1, Math.floor(timeDataArray.length / 256));
+              for (let i = 0; i < timeDataArray.length; i += downsampleRatio) {
+                if (this.systemBufferIndex < this.systemAudioBuffer.length) {
+                  this.systemAudioBuffer[this.systemBufferIndex] = timeDataArray[i];
+                  this.systemBufferIndex++;
+                }
+              }
+              
+              // Calculate RMS level from time domain data
+              let sum = 0;
+              for (let i = 0; i < timeDataArray.length; i++) {
+                sum += timeDataArray[i] * timeDataArray[i];
+              }
+              const rms = Math.sqrt(sum / timeDataArray.length);
+              // Convert to percentage with safe scaling and hard cap
+              let level = rms * 200; // Reduced from 1000 to 200
+              this.systemAudioLevel = Math.max(0, Math.min(100, level)); // Hard safety cap
+              
+              // Debug every 60 frames (roughly once per second)
+              if (frameCount % 60 === 0) {
+                console.log('DEBUG: System Audio level:', this.systemAudioLevel.toFixed(2), 'RMS:', rms.toFixed(4));
+              }
+              frameCount++;
+              
+              // Detect signal presence with lower threshold
+              const hasSignal = this.systemAudioLevel > 0.5;
+              if (hasSignal !== this.systemHasSignal) {
+                this.systemHasSignal = hasSignal;
+                console.log('DEBUG: System Signal changed to:', hasSignal);
+              }
+              
+              // Update combined levels and check for audio streaming
+              this.updateCombinedLevels();
+              this.checkAndSendAudioChunk();
+              
+              requestAnimationFrame(updateSystemLevel);
+            }
+          };
+          
+          // Resume AudioContext if needed
+          if (this.systemAudioContext.state === 'suspended') {
+            console.log('DEBUG: Resuming suspended System AudioContext...');
+            await this.systemAudioContext.resume();
+          }
+          
+          // Set capturing flag BEFORE starting the loop
+          this.isCapturing = true;
+          
+          updateSystemLevel();
+          console.log('DEBUG: System Level monitoring started');
+          
+        } catch (audioError) {
+          console.error('DEBUG: System AudioContext setup failed:', audioError);
+          throw audioError;
+        }
+        
+        this.systemHasSignal = true;
+        this.emit('audio-signal-changed', true);
+      } else {
+        console.error('DEBUG: No system audio tracks found in stream');
+      }
+      
+      console.log('DEBUG: System audio capture completed successfully');
+      return true;
+    } catch (error) {
+      console.error('DEBUG: startSystemAudioCapture failed:', error);
+      return false;
+    }
   }
 
   async startMicrophoneCapture() {
     try {
-      console.log('Starting microphone capture...');
+      console.log('DEBUG: startMicrophoneCapture() called');
       
-      // Request microphone access with optimal settings for transcription
-      this.microphoneStream = await navigator.mediaDevices.getUserMedia({
+      // Get microphone device
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const micDevice = devices.find(device =>
+        device.kind === 'audioinput' && 
+        (device.label.toLowerCase().includes('macbook pro microphone') || 
+         device.label.toLowerCase().includes('built-in'))
+      );
+      
+      if (!micDevice) {
+        console.error('DEBUG: Built-in microphone not found');
+        throw new Error('Built-in microphone not found');
+      }
+      
+      console.log('DEBUG: Found microphone device:', micDevice.label);
+      
+      // Request access to microphone
+      const constraints = {
         audio: {
-          sampleRate: this.config.sampleRate,
-          channelCount: this.config.channels,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          latency: 0,
-          sampleSize: this.config.bitDepth
+          deviceId: { exact: micDevice.deviceId },
+          sampleRate: 16000,
+          channelCount: 1,  // Mono for microphone
+          echoCancellation: true,  // Enable for microphone
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: false
+      };
+      
+      this.micMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('DEBUG: Successfully captured microphone stream!');
+      console.log('DEBUG: Mic stream settings:', {
+        sampleRate: this.micMediaStream.getAudioTracks()[0].getSettings().sampleRate,
+        channelCount: this.micMediaStream.getAudioTracks()[0].getSettings().channelCount
+      });
+      
+      // Set up microphone audio level monitoring
+      if (this.micMediaStream.getAudioTracks().length > 0) {
+        console.log('DEBUG: Setting up Microphone AudioContext...');
+        
+        try {
+          // Create AudioContext for microphone
+          this.micAudioContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: 16000
+          });
+          console.log('DEBUG: Mic AudioContext created, state:', this.micAudioContext.state);
+          
+          const source = this.micAudioContext.createMediaStreamSource(this.micMediaStream);
+          console.log('DEBUG: Mic MediaStreamSource created');
+          
+          const analyser = this.micAudioContext.createAnalyser();
+          analyser.fftSize = 512;
+          analyser.minDecibels = -90;
+          analyser.maxDecibels = -10;
+          analyser.smoothingTimeConstant = 0.8;
+          source.connect(analyser);
+          console.log('DEBUG: Mic Analyser connected');
+          
+          // Set up microphone level monitoring and data collection
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          let frameCount = 0;
+          
+          // Initialize audio streaming buffer for microphone
+          this.micAudioBuffer = new Float32Array(1024); // ~64ms at 16kHz
+          this.micBufferIndex = 0;
+          
+          const updateMicLevel = () => {
+            if (this.isCapturing) {
+              // Use time domain data for actual audio levels (not frequency data)
+              const timeDataArray = new Float32Array(analyser.frequencyBinCount);
+              analyser.getFloatTimeDomainData(timeDataArray);
+              
+              // Collect audio data for streaming (downsample for 16kHz)
+              const downsampleRatio = Math.max(1, Math.floor(timeDataArray.length / 256));
+              for (let i = 0; i < timeDataArray.length; i += downsampleRatio) {
+                if (this.micBufferIndex < this.micAudioBuffer.length) {
+                  this.micAudioBuffer[this.micBufferIndex] = timeDataArray[i];
+                  this.micBufferIndex++;
+                }
+              }
+              
+              // Calculate RMS level from time domain data
+              let sum = 0;
+              for (let i = 0; i < timeDataArray.length; i++) {
+                sum += timeDataArray[i] * timeDataArray[i];
+              }
+              const rms = Math.sqrt(sum / timeDataArray.length);
+              // Convert to percentage with safe scaling and hard cap
+              let level = rms * 200; // Reduced from 1000 to 200
+              this.micAudioLevel = Math.max(0, Math.min(100, level)); // Hard safety cap
+              
+              // Debug every 60 frames (roughly once per second)
+              if (frameCount % 60 === 0) {
+                console.log('DEBUG: Mic Audio level:', this.micAudioLevel.toFixed(2), 'RMS:', rms.toFixed(4));
+              }
+              frameCount++;
+              
+              // Detect signal presence with lower threshold
+              const hasSignal = this.micAudioLevel > 0.5;
+              if (hasSignal !== this.micHasSignal) {
+                this.micHasSignal = hasSignal;
+                console.log('DEBUG: Mic Signal changed to:', hasSignal);
+              }
+              
+              // Update combined levels and check for audio streaming
+              this.updateCombinedLevels();
+              this.checkAndSendAudioChunk();
+              
+              requestAnimationFrame(updateMicLevel);
+            }
+          };
+          
+          // Resume AudioContext if needed
+          if (this.micAudioContext.state === 'suspended') {
+            console.log('DEBUG: Resuming suspended Mic AudioContext...');
+            await this.micAudioContext.resume();
+          }
+          
+          updateMicLevel();
+          console.log('DEBUG: Mic Level monitoring started');
+          
+        } catch (audioError) {
+          console.error('DEBUG: Mic AudioContext setup failed:', audioError);
+          throw audioError;
         }
-      });
-
-      console.log('Microphone stream obtained:', this.microphoneStream);
+      }
       
-      // Set up audio context for processing
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-        sampleRate: this.config.sampleRate
-      });
-
-      // Create media recorder for audio capture
-      this.mediaRecorder = new MediaRecorder(this.microphoneStream, {
-        mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: this.config.sampleRate * this.config.bitDepth
-      });
-
-      // Set up event handlers
-      this.setupMediaRecorderEvents();
-      
-      // Start recording
-      this.mediaRecorder.start(this.config.chunkInterval);
-      this.isCapturing = true;
-
-      console.log('Microphone capture started successfully');
+      console.log('DEBUG: Microphone capture completed successfully');
       return true;
     } catch (error) {
-      console.error('Error starting microphone capture:', error);
-      throw error;
+      console.error('DEBUG: startMicrophoneCapture failed:', error);
+      return false;
     }
   }
 
-  setupMediaRecorderEvents() {
-    this.mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        this.audioChunks.push(event.data);
-        this.processAudioChunk(event.data);
-      }
-    };
-
-    this.mediaRecorder.onstart = () => {
-      console.log('Media recorder started');
-      this.audioChunks = [];
-    };
-
-    this.mediaRecorder.onstop = () => {
-      console.log('Media recorder stopped');
-      this.isCapturing = false;
-    };
-
-    this.mediaRecorder.onerror = (event) => {
-      console.error('Media recorder error:', event);
-      this.isCapturing = false;
-    };
+  updateCombinedLevels() {
+    // Combine system and microphone levels
+    this.audioLevel = Math.max(this.systemAudioLevel, this.micAudioLevel);
+    this.hasAudioSignal = this.systemHasSignal || this.micHasSignal;
+    
+    // Emit combined signal change events
+    this.emit('audio-signal-changed', this.hasAudioSignal);
   }
 
-  async processAudioChunk(audioData) {
-    try {
-      // Convert audio data to format suitable for streaming
-      const arrayBuffer = await audioData.arrayBuffer();
-      const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+  checkAndSendAudioChunk() {
+    // Check if buffers are initialized first
+    if (!this.systemAudioBuffer || !this.micAudioBuffer) {
+      return; // Buffers not ready yet
+    }
+    
+    // Check if both buffers have enough data to send
+    if (this.systemBufferIndex >= this.systemAudioBuffer.length && 
+        this.micBufferIndex >= this.micAudioBuffer.length) {
       
-      // Convert to 16-bit PCM for Deepgram
-      const pcmData = this.convertToPCM(audioBuffer);
-      
-      // Send audio chunk to main process for Deepgram transcription
-      if (window.electronAPI && window.electronAPI.sendAudioChunk) {
-        window.electronAPI.sendAudioChunk(pcmData);
+      // Mix the two audio streams (simple average)
+      const mixedBuffer = new Float32Array(this.systemAudioBuffer.length);
+      for (let i = 0; i < mixedBuffer.length; i++) {
+        // Average the system and microphone audio
+        mixedBuffer[i] = (this.systemAudioBuffer[i] + this.micAudioBuffer[i]) * 0.5;
       }
       
-      console.log('Audio chunk processed and sent to Deepgram:', pcmData.length, 'bytes');
+      // Convert Float32 to Int16 PCM for WebSocket transmission
+      const pcmBuffer = new Int16Array(mixedBuffer.length);
+      for (let i = 0; i < mixedBuffer.length; i++) {
+        // Clamp to [-1, 1] and convert to 16-bit PCM
+        const sample = Math.max(-1, Math.min(1, mixedBuffer[i]));
+        pcmBuffer[i] = sample * 32767;
+      }
+      
+      // Send audio chunk via WebSocket if connected and session active
+      if (websocketConnected && currentSession && currentSession.session_id) {
+        try {
+          // Convert to base64 for WebSocket transmission
+          const audioData = btoa(String.fromCharCode(...new Uint8Array(pcmBuffer.buffer)));
+          window.electronAPI.sendAudioData(audioData);
+          
+          // Debug log occasionally
+          if (Math.random() < 0.01) { // ~1% of chunks
+            console.log('DEBUG: Sent audio chunk, size:', pcmBuffer.length, 'samples');
+          }
+        } catch (error) {
+          console.error('Error sending audio chunk:', error);
+        }
+      }
+      
+      // Reset buffers for next chunk
+      this.systemBufferIndex = 0;
+      this.micBufferIndex = 0;
+    }
+  }
+
+  async startAudioCapture() {
+    try {
+      console.log('DEBUG: startAudioCapture() called (legacy compatibility)');
+      console.log('DEBUG: this.mediaStream exists?', !!this.mediaStream);
+      
+      if (!this.mediaStream) {
+        console.error('DEBUG: No mediaStream available');
+        throw new Error('No audio stream available');
+      }
+
+      console.log('DEBUG: MediaStream tracks:', this.mediaStream.getTracks().length);
+      console.log('DEBUG: Audio tracks:', this.mediaStream.getAudioTracks().length);
+
+      // Set up basic audio level monitoring
+      if (this.mediaStream.getAudioTracks().length > 0) {
+        console.log('DEBUG: Setting up AudioContext...');
+        
+        try {
+          // Create minimal AudioContext with 16kHz sample rate to match stream
+          this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: 16000
+          });
+          console.log('DEBUG: AudioContext created, state:', this.audioContext.state);
+          console.log('DEBUG: AudioContext sample rate:', this.audioContext.sampleRate);
+          
+          const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+          console.log('DEBUG: MediaStreamSource created');
+          
+          // Create analyser for level detection (lightweight)
+          const analyser = this.audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          source.connect(analyser);
+          console.log('DEBUG: Analyser connected');
+          
+          // Set up level monitoring
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          let frameCount = 0;
+          
+          const updateLevel = () => {
+            if (this.isCapturing) {
+              analyser.getByteFrequencyData(dataArray);
+              
+              // Calculate RMS level
+              let sum = 0;
+              for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i] * dataArray[i];
+              }
+              const rms = Math.sqrt(sum / dataArray.length);
+              this.audioLevel = Math.min(100, (rms / 255) * 100);
+              
+              // Debug every 60 frames (roughly once per second)
+              if (frameCount % 60 === 0) {
+                console.log('DEBUG: Audio level:', this.audioLevel.toFixed(2), 'RMS:', rms.toFixed(2));
+              }
+              frameCount++;
+              
+              // Detect signal presence
+              const hasSignal = this.audioLevel > 1; // Low threshold for signal detection
+              if (hasSignal !== this.hasAudioSignal) {
+                this.hasAudioSignal = hasSignal;
+                this.emit('audio-signal-changed', hasSignal);
+                console.log('DEBUG: Signal changed to:', hasSignal);
+              }
+              
+              requestAnimationFrame(updateLevel);
+            }
+          };
+          
+          // Resume AudioContext if needed
+          if (this.audioContext.state === 'suspended') {
+            console.log('DEBUG: Resuming suspended AudioContext...');
+            await this.audioContext.resume();
+          }
+          
+          // Set capturing flag BEFORE starting the loop
+          this.isCapturing = true;
+          
+          updateLevel();
+          console.log('DEBUG: Level monitoring started');
+          
+        } catch (audioError) {
+          console.error('DEBUG: AudioContext setup failed:', audioError);
+          throw audioError;
+        }
+        
+        this.hasAudioSignal = true;
+        this.emit('audio-signal-changed', true);
+      } else {
+        console.error('DEBUG: No audio tracks found in stream');
+      }
+      console.log('DEBUG: Audio capture with level monitoring completed successfully');
+      return true;
     } catch (error) {
-      console.error('Error processing audio chunk:', error);
+      console.error('DEBUG: startAudioCapture failed:', error);
+      return false;
     }
   }
 
-  convertToPCM(audioBuffer) {
-    // Get the first channel (mono)
-    const channelData = audioBuffer.getChannelData(0);
-    const pcmData = new Int16Array(channelData.length);
-    
-    // Convert float32 to int16
-    for (let i = 0; i < channelData.length; i++) {
-      const sample = Math.max(-1, Math.min(1, channelData[i]));
-      pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
-    }
-    
-    return pcmData.buffer;
-  }
-
-  async stopMicrophoneCapture() {
+  async stopAudioCapture() {
     try {
-      console.log('Stopping microphone capture...');
+      console.log('Stopping dual audio capture...');
       
-      if (this.mediaRecorder && this.isCapturing) {
-        this.mediaRecorder.stop();
+      this.isCapturing = false;
+      
+      // Stop system audio stream
+      if (this.systemMediaStream) {
+        this.systemMediaStream.getTracks().forEach(track => track.stop());
+        this.systemMediaStream = null;
+        console.log('System audio stream stopped and cleared');
       }
       
-      if (this.microphoneStream) {
-        this.microphoneStream.getTracks().forEach(track => {
-          track.stop();
-        });
-        this.microphoneStream = null;
+      // Stop microphone stream
+      if (this.micMediaStream) {
+        this.micMediaStream.getTracks().forEach(track => track.stop());
+        this.micMediaStream = null;
+        console.log('Microphone stream stopped and cleared');
       }
       
+      // Stop system audio context
+      if (this.systemAudioContext) {
+        await this.systemAudioContext.close();
+        this.systemAudioContext = null;
+        console.log('System audio context closed');
+      }
+      
+      // Stop microphone audio context
+      if (this.micAudioContext) {
+        await this.micAudioContext.close();
+        this.micAudioContext = null;
+        console.log('Microphone audio context closed');
+      }
+      
+      // Stop legacy stream (for compatibility)
+      if (this.mediaStream) {
+        this.mediaStream.getTracks().forEach(track => track.stop());
+        this.mediaStream = null;
+        console.log('Legacy audio stream stopped and cleared');
+      }
+      
+      // Stop legacy audio context (for compatibility)
       if (this.audioContext) {
         await this.audioContext.close();
         this.audioContext = null;
+        console.log('Legacy audio context closed');
       }
       
-      this.isCapturing = false;
-      this.audioChunks = [];
+      // Reset all levels
+      this.systemAudioLevel = 0;
+      this.systemHasSignal = false;
+      this.micAudioLevel = 0;
+      this.micHasSignal = false;
+      this.audioLevel = 0;
+      this.hasAudioSignal = false;
       
-      console.log('Microphone capture stopped successfully');
+      this.emit('audio-signal-changed', false);
+      
+      console.log('Dual audio capture stopped successfully');
       return true;
     } catch (error) {
-      console.error('Error stopping microphone capture:', error);
-      throw error;
+      console.error('Error stopping dual audio capture:', error);
+      return false;
+    }
+  }
+
+  async getAudioStatus() {
+    try {
+      const status = await window.electronAPI.getAudioStatus();
+      this.isCapturing = status.isCapturing;
+      this.isDeepgramConnected = status.isDeepgramConnected;
+      this.hasAudioSignal = status.hasAudioSignal;
+      this.audioLevel = status.audioLevel;
+      return status;
+    } catch (error) {
+      console.error('Error getting audio status:', error);
+      return { 
+        isCapturing: false, 
+        isDeepgramConnected: false,
+        hasAudioSignal: false,
+        audioLevel: 0
+      };
     }
   }
 
@@ -158,33 +547,16 @@ class RendererAudioManager {
     return this.isCapturing;
   }
 
+  isDeepgramConnected() {
+    return this.isDeepgramConnected;
+  }
+
+  hasAudioSignalDetected() {
+    return this.hasAudioSignal;
+  }
+
   getAudioLevel() {
-    if (!this.microphoneStream || !this.audioContext) {
-      return 0;
-    }
-    
-    // Create analyzer node for audio level monitoring
-    const analyser = this.audioContext.createAnalyser();
-    const source = this.audioContext.createMediaStreamSource(this.microphoneStream);
-    source.connect(analyser);
-    
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(dataArray);
-    
-    // Calculate average level
-    const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-    return average / 255; // Normalize to 0-1
-  }
-
-  // Future: System audio capture via BlackHole
-  async startSystemAudioCapture() {
-    console.log('System audio capture not yet implemented');
-    // This will be implemented when we add BlackHole integration
-  }
-
-  async stopSystemAudioCapture() {
-    console.log('System audio capture not yet implemented');
-    // This will be implemented when we add BlackHole integration
+    return this.audioLevel;
   }
 }
 
@@ -193,132 +565,184 @@ window.RendererAudioManager = RendererAudioManager;
 
 // Simple global variables
 let isAuthenticated = false;
-let isAudioSetup = false;
 let isAudioCapturing = false;
+let isDeepgramConnected = false;
 let currentSession = null;
 let websocketConnected = false;
+let audioManager = null;
 
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
+// Audio streaming to Heroku will be implemented here
+
+// Placeholder for future Heroku audio streaming class
+class HerokuAudioStreamer {
+    constructor() {
+        this.isStreaming = false;
+        this.transcripts = [];
+    }
+    
+    // Placeholder methods - will be implemented when we add Heroku streaming
+    startStreaming() {
+        console.log('HerokuAudioStreamer: Starting audio stream to Heroku...');
+        this.isStreaming = true;
+        return true;
+    }
+    
+    stopStreaming() {
+        console.log('HerokuAudioStreamer: Stopping audio stream to Heroku...');
+        this.isStreaming = false;
+        return true;
+    }
+    
+    clearTranscripts() {
+        this.transcripts = [];
+        const transcriptDisplay = document.getElementById('transcript-display');
+        if (transcriptDisplay) {
+            transcriptDisplay.innerHTML = '<div class="transcript-placeholder">Transcripts will appear here when you start transcription...</div>';
+        }
+    }
+}
+// Global audio streamer instance (will stream to Heroku)
+let audioStreamer = null;
+
+// Additional global variables for UI state
+
+// Global error handler to catch any unhandled errors
+window.addEventListener('error', (event) => {
+    console.error('Global error caught:', event.error);
+    console.error('Error details:', {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        stack: event.error?.stack
+    });
+});
+
+// Global unhandled promise rejection handler
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+    console.error('Promise:', event.promise);
+});
+
+// DOM Content Loaded Event
+document.addEventListener('DOMContentLoaded', async () => {
     console.log('DOM loaded, setting up simple interface');
-    setupSimpleButtons();
-    checkInitialStatus();
-    setupWebSocketEvents();
+    
+    // Test electronAPI availability
+    if (window.electronAPI) {
+        console.log('electronAPI is available:', Object.keys(window.electronAPI));
+        console.log('Testing electronAPI.checkAuthStatus...');
+        const testResult = window.electronAPI.checkAuthStatus();
+        console.log('API test result:', testResult);
+    } else {
+        console.error('electronAPI is not available!');
+        return;
+    }
+    
+    try {
+        // Setup button handlers
+        console.log('Setting up simple buttons');
+        setupSimpleButtons();
+        
+        // Setup WebSocket events
+        setupWebSocketEvents();
+        
+        // Setup audio events
+        setupAudioEvents();
+        
+        // Check initial status
+        console.log('Checking initial status...');
+        await checkInitialStatus();
+        
+        // Initialize audio manager (but don't start capture yet)
+        console.log('Audio manager created (audio will be initialized when needed)');
+        audioManager = new RendererAudioManager();
+        
+        console.log('Initialization completed successfully');
+        
+    } catch (error) {
+        console.error('Initialization error:', error);
+        updateStatus('Initialization failed: ' + error.message, 'error');
+    }
 });
 
 // Simple button setup
 function setupSimpleButtons() {
-    console.log('Setting up simple buttons');
+    const buttons = {
+        'salesforce-btn': handleSalesforceAuth,
+        'slack-btn': handleSlackAuth,
+        'start-session-btn': handleStartSession,
+        'end-session-btn': handleEndSession,
+        'audio-capture-btn': handleStartAudioCapture,
+        'audio-stop-btn': handleStopAudioCapture
+    };
     
-    // First, make sure sections are visible
-    showSection('auth-buttons');
-    showSection('ready-section');
-    
-    // Get all buttons
-    const salesforceBtn = document.getElementById('salesforce-btn');
-    const slackBtn = document.getElementById('slack-btn');
-    const startSessionBtn = document.getElementById('start-session-btn');
-    
-    console.log('Found buttons:', {
-        salesforce: !!salesforceBtn,
-        slack: !!slackBtn,
-        startSession: !!startSessionBtn
+    // Add refresh auth status button
+    const refreshBtn = document.createElement('button');
+    refreshBtn.id = 'refresh-auth-btn';
+    refreshBtn.textContent = 'Refresh Auth Status';
+    refreshBtn.className = 'btn btn-secondary';
+    refreshBtn.style.marginTop = '10px';
+    refreshBtn.addEventListener('click', async () => {
+        console.log('Refresh auth status clicked');
+        updateStatus('Refreshing authentication status...', 'info');
+        await checkAuthStatus();
     });
     
-    // Debug: Log all buttons in the document
+    // Add to the auth section
+    const authSection = document.querySelector('.auth-section');
+    if (authSection) {
+        authSection.appendChild(refreshBtn);
+    }
+    
+    console.log('Found buttons:', buttons);
+    
+    // Debug: Check all buttons in document
     const allButtons = document.querySelectorAll('button');
     console.log('All buttons in document:', allButtons.length);
     allButtons.forEach((btn, index) => {
-        console.log(`Button ${index}:`, btn.id, btn.textContent.trim(), 'display:', window.getComputedStyle(btn).display);
+        console.log(`Button ${index}: ${btn.id} ${btn.textContent} display: ${getComputedStyle(btn).display}`);
     });
     
-    // Add simple click handlers
-    if (salesforceBtn) {
-        salesforceBtn.addEventListener('click', () => {
-            console.log('Salesforce button clicked');
-            authenticateSalesforce();
-        });
-        console.log('Salesforce button handler attached');
-    } else {
-        console.error('Salesforce button not found');
-    }
-    
-    if (slackBtn) {
-        slackBtn.addEventListener('click', () => {
-            console.log('Slack button clicked');
-            authenticateSlack();
-        });
-        console.log('Slack button handler attached');
-    } else {
-        console.error('Slack button not found');
-    }
-    
-    if (startSessionBtn) {
-        startSessionBtn.addEventListener('click', () => {
-            console.log('Start session button clicked');
-            handleStartSession();
-        });
-        console.log('Start session button handler attached');
-    } else {
-        console.error('Start session button not found');
-    }
-}
-
-// WebSocket event setup
-function setupWebSocketEvents() {
-    // Listen for WebSocket events from main process
-    window.electronAPI.onWebSocketConnected(() => {
-        console.log('WebSocket connected');
-        websocketConnected = true;
-        updateStatus('Connected to Heroku backend', 'success');
-    });
-    
-    window.electronAPI.onWebSocketDisconnected(() => {
-        console.log('WebSocket disconnected');
-        websocketConnected = false;
-        updateStatus('Disconnected from Heroku backend', 'warning');
-    });
-    
-    window.electronAPI.onWebSocketError((error) => {
-        console.error('WebSocket error:', error);
-        updateStatus('WebSocket error: ' + error, 'error');
-    });
-    
-    window.electronAPI.onSessionCreated((session) => {
-        console.log('Session created:', session);
-        currentSession = session;
-        updateStatus('Session created! ID: ' + session.session_id, 'success');
-    });
-    
-    window.electronAPI.onSessionStarted((session) => {
-        console.log('Session started:', session);
-        updateStatus('Session started successfully!', 'success');
-        updateSessionButton('End Session');
-    });
-    
-    window.electronAPI.onSessionEnded((session) => {
-        console.log('Session ended:', session);
-        currentSession = null;
-        updateStatus('Session ended', 'info');
-        updateSessionButton('Start Session');
+    // Attach event listeners
+    Object.entries(buttons).forEach(([buttonId, handler]) => {
+        const button = document.getElementById(buttonId);
+        if (button) {
+            // Remove any existing listeners
+            button.replaceWith(button.cloneNode(true));
+            const newButton = document.getElementById(buttonId);
+            
+            newButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                console.log(`${buttonId} clicked!`, event);
+                handler(event);
+            });
+            
+            // Add hover effect for debugging
+            newButton.addEventListener('mouseenter', () => {
+                console.log(`${buttonId} hovered`);
+            });
+            
+            console.log(`${buttonId.replace('-btn', '')} button handler attached`);
+        } else {
+            console.warn(`Button ${buttonId} not found`);
+        }
     });
 }
 
-// Simple authentication functions
-async function authenticateSalesforce() {
+// Handler functions
+async function handleSalesforceAuth() {
     try {
         console.log('Starting Salesforce authentication...');
         updateStatus('Authenticating with Salesforce...', 'info');
-        
         const result = await window.electronAPI.authenticateSalesforce();
         console.log('Salesforce result:', result);
-        
         if (result.success) {
             updateStatus('Salesforce authenticated!', 'success');
-            updateAuthStatus('salesforce', true);
             await checkAuthStatus();
         } else {
-            updateStatus('Salesforce auth failed: ' + result.error, 'error');
+            updateStatus('Salesforce authentication failed: ' + result.error, 'error');
         }
     } catch (error) {
         console.error('Salesforce auth error:', error);
@@ -326,20 +750,17 @@ async function authenticateSalesforce() {
     }
 }
 
-async function authenticateSlack() {
+async function handleSlackAuth() {
     try {
         console.log('Starting Slack authentication...');
         updateStatus('Authenticating with Slack...', 'info');
-        
         const result = await window.electronAPI.authenticateSlack();
         console.log('Slack result:', result);
-        
         if (result.success) {
             updateStatus('Slack authenticated!', 'success');
-            updateAuthStatus('slack', true);
             await checkAuthStatus();
         } else {
-            updateStatus('Slack auth failed: ' + result.error, 'error');
+            updateStatus('Slack authentication failed: ' + result.error, 'error');
         }
     } catch (error) {
         console.error('Slack auth error:', error);
@@ -347,224 +768,473 @@ async function authenticateSlack() {
     }
 }
 
-// Simple audio functions
-async function runAudioSetup() {
-    try {
-        console.log('Running audio setup...');
-        updateStatus('Running audio setup...', 'info');
-        
-        const result = await window.electronAPI.setupAudio();
-        console.log('Audio setup result:', result);
-        
-        if (result.success) {
-            isAudioSetup = true;
-            updateStatus('Audio setup complete!', 'success');
-            updateAudioStatus('Audio setup complete');
-            hideSection('audio-setup-section');
-        } else {
-            updateStatus('Audio setup failed: ' + result.error, 'error');
-        }
-    } catch (error) {
-        console.error('Audio setup error:', error);
-        updateStatus('Audio setup error: ' + error.message, 'error');
-    }
-}
-
-async function toggleAudioCapture() {
-    if (isAudioCapturing) {
-        await stopAudioCapture();
-    } else {
-        await startAudioCapture();
-    }
-}
-
-async function startAudioCapture() {
-    try {
-        console.log('Starting audio capture...');
-        updateStatus('Starting audio capture...', 'info');
-        
-        const result = await window.electronAPI.startAudio();
-        console.log('Audio start result:', result);
-        
-        if (result.success) {
-            isAudioCapturing = true;
-            updateStatus('Audio capture started!', 'success');
-            updateAudioButton('Stop Audio');
-        } else {
-            updateStatus('Failed to start audio: ' + result.error, 'error');
-        }
-    } catch (error) {
-        console.error('Audio start error:', error);
-        updateStatus('Audio start error: ' + error.message, 'error');
-    }
-}
-
-async function stopAudioCapture() {
-    try {
-        console.log('Stopping audio capture...');
-        
-        const result = await window.electronAPI.stopAudio();
-        console.log('Audio stop result:', result);
-        
-        if (result.success) {
-            isAudioCapturing = false;
-            updateStatus('Audio capture stopped!', 'info');
-            updateAudioButton('Start Audio');
-        }
-    } catch (error) {
-        console.error('Audio stop error:', error);
-        updateStatus('Audio stop error: ' + error.message, 'error');
-    }
-}
-
-// Simple session function
 async function handleStartSession() {
     try {
-        if (!isAuthenticated) {
-            updateStatus('Please authenticate with Salesforce and Slack first', 'warning');
-            return;
-        }
-        
         console.log('Starting session...');
         updateStatus('Starting session...', 'info');
         
-        // Connect to WebSocket if not connected
-        if (!websocketConnected) {
-            console.log('Connecting to WebSocket...');
-            const wsResult = await window.electronAPI.connectWebSocket();
-            if (!wsResult.success) {
-                updateStatus('Failed to connect to Heroku: ' + wsResult.error, 'error');
-                return;
-            }
+        // Connect to WebSocket first
+        console.log('Connecting to WebSocket...');
+        const wsResult = await window.electronAPI.connectWebSocket();
+        if (!wsResult.success) {
+            throw new Error('Failed to connect to WebSocket: ' + wsResult.error);
         }
         
         // Create session
         console.log('Creating session...');
-        const createResult = await window.electronAPI.createSession();
-        if (!createResult.success) {
-            updateStatus('Failed to create session: ' + createResult.error, 'error');
-            return;
+        const result = await window.electronAPI.createSession();
+        console.log('Session result:', result);
+        
+        if (result.success) {
+            // Only update currentSession if we have valid session data and it's not already set
+            if (result.session && result.session.session_id && !currentSession) {
+                currentSession = result.session;
+                console.log('DEBUG: currentSession set from createSession:', currentSession);
+                updateStatus(`Session created! ID: ${result.session.session_id}`, 'success');
+            } else if (currentSession && currentSession.session_id) {
+                console.log('DEBUG: currentSession already exists from WebSocket, not overwriting:', currentSession);
+                updateStatus(`Session created! ID: ${currentSession.session_id}`, 'success');
+            } else {
+                console.log('DEBUG: createSession returned invalid session data:', result.session);
+                updateStatus('Session created but ID not available yet...', 'info');
+            }
+            updateSessionButton(true);
+            
+            // Auto-start the session if we have a valid session ID
+            if (currentSession && currentSession.session_id) {
+                console.log('Auto-starting session with ID:', currentSession.session_id);
+                const startResult = await window.electronAPI.startSession(currentSession.session_id);
+                console.log('Session started:', startResult);
+                if (startResult.success) {
+                    updateStatus('Session started successfully!', 'success');
+                }
+                console.log('Auto-start session result:', startResult);
+            }
+        } else {
+            updateStatus('Failed to create session: ' + result.error, 'error');
         }
-        
-        // Start session
-        console.log('Starting session...');
-        const startResult = await window.electronAPI.startSession(createResult.session.session_id);
-        if (!startResult.success) {
-            updateStatus('Failed to start session: ' + startResult.error, 'error');
-            return;
-        }
-        
-        updateStatus('Session started successfully!', 'success');
-        
     } catch (error) {
         console.error('Session error:', error);
         updateStatus('Session error: ' + error.message, 'error');
     }
 }
 
-// Simple status check
-async function checkInitialStatus() {
+async function handleEndSession() {
     try {
-        console.log('Checking initial status...');
-        updateStatus('Ready to start!', 'info');
+        console.log('Ending session...');
+        console.log('DEBUG: currentSession at end time:', currentSession);
+        updateStatus('Ending session...', 'info');
         
-        // Check current auth status
-        await checkAuthStatus();
+        if (!currentSession) {
+            console.error('DEBUG: No currentSession found!');
+            throw new Error('No active session to end');
+        }
+        
+        if (!currentSession.session_id) {
+            console.error('DEBUG: currentSession exists but no session_id:', currentSession);
+            throw new Error('Session ID not found in current session');
+        }
+        
+        console.log('DEBUG: Ending session with ID:', currentSession.session_id);
+        const result = await window.electronAPI.endSession(currentSession.session_id);
+        console.log('End session result:', result);
+        
+        if (result.success) {
+            currentSession = null;
+            updateStatus('Session ended!', 'success');
+            updateSessionButton(false);
+        } else {
+            updateStatus('Failed to end session: ' + result.error, 'error');
+        }
+    } catch (error) {
+        console.error('End session error:', error);
+        updateStatus('End session error: ' + error.message, 'error');
+    }
+}
+
+async function handleStartAudioCapture() {
+    try {
+        console.log('Start audio capture button clicked');
+        updateStatus('Looking for BlackHole audio device...', 'info');
+        
+        // Get available audio devices
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        console.log('DEBUG: Total devices found:', devices.length);
+        
+        console.log('DEBUG: All available devices:');
+        devices.forEach((device, index) => {
+            console.log(`  ${index}: ${device.kind} - "${device.label}" (ID: ${device.deviceId})`);
+        });
+        
+        const audioInputs = devices.filter(device => device.kind === 'audioinput');
+        console.log('DEBUG: Audio input devices:', audioInputs.length);
+        audioInputs.forEach((device, index) => {
+            console.log(`  Input ${index}: "${device.label}"`);
+        });
+        
+        // Look for BlackHole device
+        const blackHoleDevice = audioInputs.find(device => 
+            device.label.toLowerCase().includes('blackhole')
+        );
+        
+        if (!blackHoleDevice) {
+            throw new Error('BlackHole device not found. Please check Audio MIDI Setup.');
+        }
+        
+        console.log('Found BlackHole device:', blackHoleDevice.label);
+        updateStatus(`Connecting to: ${blackHoleDevice.label}`, 'info');
+        
+        // Request access to BlackHole device
+        const constraints = {
+            audio: {
+                deviceId: { exact: blackHoleDevice.deviceId },
+                sampleRate: 16000,
+                channelCount: 2,
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+            }
+        };
+        
+        const systemAudioStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('Successfully captured system audio stream from BlackHole device!');
+        console.log('System Stream settings:', systemAudioStream.getAudioTracks()[0].getSettings());
+        
+        // Start system audio capture
+        const systemSuccess = await audioManager.startSystemAudioCapture(systemAudioStream);
+        if (!systemSuccess) {
+            throw new Error('Failed to start system audio capture');
+        }
+        
+        console.log('System audio capture started, now starting microphone...');
+        updateStatus('System audio connected, starting microphone...', 'info');
+        
+        // Start microphone capture
+        const micSuccess = await audioManager.startMicrophoneCapture();
+        if (!micSuccess) {
+            throw new Error('Failed to start microphone capture');
+        }
+        
+        console.log('Both system and microphone audio capture started!');
+        updateStatus(`Dual audio capture started: ${blackHoleDevice.label} + Microphone!`, 'success');
+        updateAudioButton(true);
+        setupAudioLevelIndicator();
         
     } catch (error) {
+        console.error('Audio capture error:', error);
+        updateStatus('Audio capture error: ' + error.message, 'error');
+    }
+}
+
+async function handleStopAudioCapture() {
+    try {
+        console.log('Stop audio capture button clicked');
+        updateStatus('Stopping audio capture...', 'info');
+        
+        const result = audioManager.stopAudioCapture();
+        console.log('Audio capture stop result:', result);
+        
+        if (result) {
+            updateStatus('Audio capture stopped!', 'success');
+            updateAudioButton(false);
+        } else {
+            updateStatus('Failed to stop audio capture', 'error');
+        }
+    } catch (error) {
+        console.error('Audio capture error:', error);
+        updateStatus('Audio capture error: ' + error.message, 'error');
+    }
+}
+
+// Event setup functions
+function setupWebSocketEvents() {
+    window.electronAPI.onWebSocketConnected(() => {
+        console.log('WebSocket connected');
+        websocketConnected = true;
+        updateStatus('Connected to Heroku backend', 'success');
+    });
+
+    window.electronAPI.onWebSocketDisconnected(() => {
+        console.log('WebSocket disconnected');
+        websocketConnected = false;
+        updateStatus('Disconnected from Heroku backend', 'info');
+    });
+
+    window.electronAPI.onWebSocketError((event, error) => {
+        console.error('WebSocket error:', error);
+        updateStatus('WebSocket error: ' + error, 'error');
+    });
+
+    window.electronAPI.onSessionCreated((session) => {
+        console.log('Session created event received:', session);
+        console.log('Response type:', typeof session);
+        console.log('Response keys:', Object.keys(session));
+        
+        try {
+            let sessionData;
+            
+            if (session && typeof session === 'object') {
+                if (session.session) {
+                    console.log('Found session object in response.session');
+                    sessionData = session.session;
+                } else if (session.session_id) {
+                    console.log('Found session_id directly in response');
+                    sessionData = session;
+                } else {
+                    console.log('Session object:', session);
+                    console.log('Session object keys:', Object.keys(session));
+                    sessionData = session;
+                }
+            } else {
+                console.error('Invalid session data received:', session);
+                return;
+            }
+            
+            if (sessionData && sessionData.session_id) {
+                console.log('Found sessionId in session.session_id:', sessionData.session_id);
+                
+                // Only update currentSession if it's not already set (avoid overwriting)
+                if (!currentSession || !currentSession.session_id) {
+                    currentSession = sessionData;
+                    console.log('DEBUG: currentSession updated from WebSocket:', currentSession);
+                } else {
+                    console.log('DEBUG: currentSession already exists, not overwriting:', currentSession);
+                }
+                
+                // Extract just the session ID for display
+                const sessionId = sessionData.session_id;
+                console.log('Extracted session ID:', sessionId);
+                
+                updateStatus(`Session created! ID: ${sessionId}`, 'success');
+                updateSessionButton(true);
+                
+                // Auto-start session
+                console.log('Auto-starting session with ID:', sessionId);
+                window.electronAPI.startSession(sessionId).then(result => {
+                    console.log('Session started:', result);
+                    if (result.success) {
+                        updateStatus('Session started successfully!', 'success');
+                    }
+                    console.log('Auto-start session result:', result);
+                });
+            } else {
+                console.error('No session_id found in session data:', sessionData);
+                updateStatus('Session created but no ID found', 'error');
+            }
+        } catch (error) {
+            console.error('Error processing session created event:', error);
+            updateStatus('Error processing session: ' + error.message, 'error');
+        }
+    });
+
+    window.electronAPI.onTranscriptLine((event, line) => {
+        console.log('Transcript line received:', line);
+        addTranscriptLine(line);
+    });
+}
+
+function setupAudioEvents() {
+    window.electronAPI.onAudioInitialized(() => {
+        console.log('Audio initialized');
+        updateStatus('Audio system ready', 'success');
+    });
+
+    window.electronAPI.onAudioStarted(() => {
+        console.log('Audio started');
+        updateStatus('Audio capture started', 'success');
+    });
+
+    window.electronAPI.onAudioStopped(() => {
+        console.log('Audio stopped');
+        updateStatus('Audio capture stopped', 'info');
+    });
+
+    window.electronAPI.onAudioError((event, error) => {
+        console.error('Audio error:', error);
+        updateStatus('Audio error: ' + error, 'error');
+    });
+}
+
+// Status and UI functions
+async function checkInitialStatus() {
+    try {
+        updateStatus('Ready to start!', 'info');
+        await checkAuthStatus();
+    } catch (error) {
         console.error('Status check error:', error);
+        updateStatus('Error checking status', 'error');
     }
 }
 
 async function checkAuthStatus() {
     try {
-        const status = await window.electronAPI.checkAuthStatus();
-        console.log('Auth status check result:', status);
+        console.log('Checking auth status...');
+        const result = await window.electronAPI.checkAuthStatus();
+        console.log('Auth status check result:', result);
         
-        // Update UI based on auth status
-        updateAuthStatus('salesforce', status.salesforce);
-        updateAuthStatus('slack', status.slack);
+        const bothAuthenticated = result.salesforce && result.slack;
+        console.log('Both services authenticated:', bothAuthenticated);
+        isAuthenticated = bothAuthenticated;
         
-        // Check if both services are authenticated
-        isAuthenticated = status.salesforce && status.slack;
-        console.log('Both services authenticated:', isAuthenticated);
-        
-        if (isAuthenticated) {
+        if (bothAuthenticated) {
             console.log('Showing ready section and hiding auth buttons');
-            showSection('ready-section');
-            hideSection('auth-buttons');
             updateStatus('All services connected! Ready to start sessions.', 'success');
+            
+            // Hide auth buttons
+            const authSection = document.querySelector('.auth-section');
+            const readySection = document.querySelector('.ready-section');
+            if (authSection) authSection.style.display = 'none';
+            if (readySection) readySection.style.display = 'block';
+            
         } else {
             console.log('Showing auth buttons and hiding ready section');
-            showSection('auth-buttons');
-            hideSection('ready-section');
-            updateStatus('Please authenticate with Salesforce and Slack', 'info');
+            updateStatus('Please authenticate with Salesforce and Slack (click Refresh if you just completed OAuth)', 'info');
+            
+            // Show auth buttons
+            const authSection = document.querySelector('.auth-section');
+            const readySection = document.querySelector('.ready-section');
+            if (authSection) authSection.style.display = 'block';
+            if (readySection) readySection.style.display = 'none';
         }
-        
     } catch (error) {
-        console.error('Error checking auth status:', error);
-        // Default to showing auth buttons if check fails
-        showSection('auth-buttons');
-        hideSection('ready-section');
+        console.error('Auth status error:', error);
+        updateStatus('Error checking authentication status', 'error');
     }
 }
 
-// Simple UI helper functions
-function updateStatus(message, type = 'info') {
-    const statusElement = document.getElementById('status-message');
+function updateStatus(message, type) {
+    const statusElement = document.getElementById('status');
     if (statusElement) {
         statusElement.textContent = message;
-        statusElement.className = `status-message ${type}`;
+        statusElement.className = `status ${type}`;
     }
     console.log('Status update:', message, type);
 }
 
-function updateAuthStatus(service, isConnected) {
-    const statusElement = document.getElementById(`${service}-status-text`);
-    if (statusElement) {
-        if (isConnected) {
-            statusElement.textContent = '✓ Connected';
-            statusElement.className = 'status-text connected';
-        } else {
-            statusElement.textContent = '✗ Not connected';
-            statusElement.className = 'status-text disconnected';
+function updateSessionButton(isActive) {
+    const startBtn = document.getElementById('start-session-btn');
+    const endBtn = document.getElementById('end-session-btn');
+    
+    if (isActive) {
+        if (startBtn) startBtn.classList.add('hidden');
+        if (endBtn) endBtn.classList.remove('hidden');
+    } else {
+        if (startBtn) startBtn.classList.remove('hidden');
+        if (endBtn) endBtn.classList.add('hidden');
+    }
+}
+
+function updateAudioButton(isCapturing) {
+    const startBtn = document.getElementById('audio-capture-btn');
+    const stopBtn = document.getElementById('audio-stop-btn');
+    
+    if (isCapturing) {
+        if (startBtn) startBtn.classList.add('hidden');
+        if (stopBtn) stopBtn.classList.remove('hidden');
+    } else {
+        if (startBtn) startBtn.classList.remove('hidden');
+        if (stopBtn) stopBtn.classList.add('hidden');
+    }
+}
+
+function addTranscriptLine(line) {
+    const container = document.getElementById('transcript-container');
+    if (!container) return;
+
+    const lineElement = document.createElement('div');
+    lineElement.className = 'transcript-line';
+    lineElement.textContent = `[${new Date().toLocaleTimeString()}] ${line}`;
+    
+    container.appendChild(lineElement);
+    
+    // Auto-scroll to bottom
+    container.scrollTop = container.scrollHeight;
+}
+
+function setupAudioLevelIndicator() {
+    if (!audioManager) return;
+    
+    console.log('Setting up dual audio level indicator...');
+    
+    // Create or update the audio level display
+    let levelContainer = document.getElementById('audio-level-container');
+    if (!levelContainer) {
+        levelContainer = document.createElement('div');
+        levelContainer.id = 'audio-level-container';
+        levelContainer.innerHTML = `
+            <div style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9;">
+                <h4 style="margin: 0 0 10px 0; color: #333;">Audio Levels</h4>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #2563eb;">System Audio (BlackHole):</label>
+                    <div style="width: 100%; height: 20px; background: #e5e7eb; border-radius: 10px; overflow: hidden; position: relative;">
+                        <div id="system-audio-bar" style="height: 100%; background: linear-gradient(90deg, #3b82f6, #1d4ed8); width: 0%; transition: width 0.1s ease;"></div>
+                    </div>
+                    <div id="system-audio-level" style="margin-top: 5px; font-size: 14px; color: #374151;">Level: 0.0%</div>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #059669;">Microphone:</label>
+                    <div style="width: 100%; height: 20px; background: #e5e7eb; border-radius: 10px; overflow: hidden; position: relative;">
+                        <div id="mic-audio-bar" style="height: 100%; background: linear-gradient(90deg, #10b981, #047857); width: 0%; transition: width 0.1s ease;"></div>
+                    </div>
+                    <div id="mic-audio-level" style="margin-top: 5px; font-size: 14px; color: #374151;">Level: 0.0%</div>
+                </div>
+                
+                <div style="padding: 10px; background: #f3f4f6; border-radius: 6px; text-align: center;">
+                    <div id="combined-signal-status" style="font-weight: bold; color: #374151;">Combined Signal: No</div>
+                </div>
+            </div>
+        `;
+        
+        // Insert after audio controls
+        const audioSection = document.getElementById('audio-controls-section');
+        if (audioSection) {
+            audioSection.appendChild(levelContainer);
         }
     }
+    
+    // Start monitoring levels
+    const updateLevels = () => {
+        if (!audioManager || !audioManager.isCapturing) {
+            return;
+        }
+        
+        // Update system audio levels
+        const systemBar = document.getElementById('system-audio-bar');
+        const systemLevel = document.getElementById('system-audio-level');
+        if (systemBar && systemLevel) {
+            const systemPercent = (audioManager.systemAudioLevel * 100).toFixed(1);
+            systemBar.style.width = `${Math.min(systemPercent, 100)}%`;
+            systemLevel.textContent = `Level: ${systemPercent}%`;
+        }
+        
+        // Update microphone levels
+        const micBar = document.getElementById('mic-audio-bar');
+        const micLevel = document.getElementById('mic-audio-level');
+        if (micBar && micLevel) {
+            const micPercent = (audioManager.micAudioLevel * 100).toFixed(1);
+            micBar.style.width = `${Math.min(micPercent, 100)}%`;
+            micLevel.textContent = `Level: ${micPercent}%`;
+        }
+        
+        // Update combined signal status
+        const combinedStatus = document.getElementById('combined-signal-status');
+        if (combinedStatus) {
+            const hasSignal = audioManager.systemHasSignal || audioManager.micHasSignal;
+            combinedStatus.textContent = `Combined Signal: ${hasSignal ? 'Yes' : 'No'}`;
+            combinedStatus.style.color = hasSignal ? '#059669' : '#6b7280';
+        }
+        
+        // Debug log - audioLevel is already a percentage (0-100)
+        const systemPercent = audioManager.systemAudioLevel.toFixed(1);
+        const micPercent = audioManager.micAudioLevel.toFixed(1);
+        const hasSignal = audioManager.systemHasSignal || audioManager.micHasSignal;
+        console.log(`Dual Audio - System: ${systemPercent}% Mic: ${micPercent}% Combined Signal: ${hasSignal}`);
+        
+        requestAnimationFrame(updateLevels);
+    };
+    
+    // Start the monitoring loop
+    requestAnimationFrame(updateLevels);
 }
-
-function updateAudioStatus(message) {
-    const audioStatusElement = document.getElementById('audio-status');
-    if (audioStatusElement) {
-        audioStatusElement.textContent = message;
-    }
-}
-
-function updateAudioButton(text) {
-    const audioBtn = document.getElementById('audio-capture-btn');
-    if (audioBtn) {
-        audioBtn.textContent = text;
-    }
-}
-
-function updateSessionButton(text) {
-    const sessionBtn = document.getElementById('session-btn');
-    if (sessionBtn) {
-        sessionBtn.textContent = text;
-    }
-}
-
-function showSection(sectionId) {
-    const section = document.getElementById(sectionId);
-    if (section) {
-        section.style.display = 'block';
-    }
-}
-
-function hideSection(sectionId) {
-    const section = document.getElementById(sectionId);
-    if (section) {
-        section.style.display = 'none';
-    }
-}
-
-

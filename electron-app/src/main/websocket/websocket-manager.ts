@@ -37,7 +37,7 @@ export class WebSocketManager {
 
   public async connect(backendUrl: string): Promise<boolean> {
     try {
-      console.log('Connecting to WebSocket:', backendUrl);
+      console.log('WebSocketManager: Connecting to:', backendUrl);
       
       this.socket = io(backendUrl, {
         transports: ['websocket', 'polling'],
@@ -47,30 +47,32 @@ export class WebSocketManager {
         reconnectionDelay: this.reconnectDelay
       });
 
+      console.log('WebSocketManager: Socket created, setting up event listeners...');
       this.setupEventListeners();
       
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
+          console.error('WebSocketManager: Connection timeout after 10 seconds');
           reject(new Error('WebSocket connection timeout'));
         }, 10000);
 
         this.socket!.on('connect', () => {
           clearTimeout(timeout);
           this.isConnected = true;
-          console.log('WebSocket connected successfully');
+          console.log('WebSocketManager: Successfully connected to Heroku backend');
           this.events.onConnect();
           resolve(true);
         });
 
         this.socket!.on('connect_error', (error) => {
           clearTimeout(timeout);
-          console.error('WebSocket connection error:', error);
+          console.error('WebSocketManager: Connection error:', error);
           this.events.onError(error.message);
           reject(error);
         });
       });
     } catch (error) {
-      console.error('Error connecting to WebSocket:', error);
+      console.error('WebSocketManager: Error connecting to WebSocket:', error);
       this.events.onError(error instanceof Error ? error.message : 'Unknown error');
       return false;
     }
@@ -118,11 +120,16 @@ export class WebSocketManager {
 
     // Session event handlers
     this.socket.on('session_created', (response: any) => {
-      console.log('Session created response:', response);
+      console.log('WebSocketManager: Received session_created from Heroku:', response);
+      console.log('WebSocketManager: Response structure:', JSON.stringify(response, null, 2));
+      
       if (response.success) {
         this.currentSessionId = response.session.session_id;
-        this.events.onSessionCreated(response.session);
+        console.log('WebSocketManager: Forwarding full response to renderer:', response);
+        // Send the FULL response to maintain the structure the renderer expects
+        this.events.onSessionCreated(response);
       } else {
+        console.error('WebSocketManager: Session creation failed:', response.error);
         this.events.onError(`Session creation failed: ${response.error}`);
       }
     });
@@ -155,30 +162,49 @@ export class WebSocketManager {
   public createSession(): Promise<SessionData> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.isConnected) {
+        console.error('WebSocketManager: Cannot create session - WebSocket not connected');
         reject(new Error('WebSocket not connected'));
         return;
       }
-      console.log('Creating session...');
+      console.log('WebSocketManager: Creating session...');
       const callbackId = 'create_session_' + Date.now();
       this.pendingCallbacks.set(callbackId, { resolve, reject });
       setTimeout(() => {
         if (this.pendingCallbacks.has(callbackId)) {
           this.pendingCallbacks.delete(callbackId);
+          console.error('WebSocketManager: Session creation timeout');
           reject(new Error('Session creation timeout'));
         }
       }, 10000);
       const handleSessionCreated = (response: any) => {
+        console.log('WebSocketManager: Received session_created response:', response);
         if (this.pendingCallbacks.has(callbackId)) {
           this.pendingCallbacks.delete(callbackId);
           this.socket?.off('session_created', handleSessionCreated);
           if (response.success) {
-            resolve(response.session);
+            // Handle different response structures
+            const session = response.session || response;
+            const sessionId = session.session_id || session.id || response.session_id || response.id;
+            
+            console.log('WebSocketManager: Session object:', session);
+            console.log('WebSocketManager: Extracted session ID:', sessionId);
+            
+            if (sessionId) {
+              this.currentSessionId = sessionId;
+              console.log('WebSocketManager: Session created successfully with ID:', sessionId);
+              resolve(session);
+            } else {
+              console.error('WebSocketManager: No session ID found in response. Response structure:', JSON.stringify(response, null, 2));
+              reject(new Error('No session ID in response'));
+            }
           } else {
+            console.error('WebSocketManager: Session creation failed:', response.error);
             reject(new Error(response.error || 'Failed to create session'));
           }
         }
       };
       this.socket.on('session_created', handleSessionCreated);
+      console.log('WebSocketManager: Emitting create_session event...');
       this.socket.emit('create_session', {});
     });
   }
@@ -203,7 +229,17 @@ export class WebSocketManager {
           this.pendingCallbacks.delete(callbackId);
           this.socket?.off('session_started', handleSessionStarted);
           if (response.success) {
-            resolve(response.session);
+            // Handle different response structures
+            const session = response.session || response;
+            const sessionId = session.session_id || session.id || response.session_id || response.id;
+            
+            if (sessionId) {
+              this.currentSessionId = sessionId;
+              console.log('Session started with ID:', sessionId);
+              resolve(session);
+            } else {
+              reject(new Error('No session ID in response'));
+            }
           } else {
             reject(new Error(response.error || 'Failed to start session'));
           }
@@ -234,7 +270,9 @@ export class WebSocketManager {
           this.pendingCallbacks.delete(callbackId);
           this.socket?.off('session_ended', handleSessionEnded);
           if (response.success) {
-            resolve(response.session);
+            // Handle different response structures
+            const session = response.session || response;
+            resolve(session);
           } else {
             reject(new Error(response.error || 'Failed to end session'));
           }
