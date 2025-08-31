@@ -7,8 +7,7 @@ Flask-CORS==4.0.0
 python-socketio==5.8.0
 python-engineio==4.7.1
 eventlet==0.33.3
-websockets==11.0.3
-websocket-client==1.6.3
+deepgram-sdk==4.8.1
 
 # HTTP and async support
 requests==2.31.0

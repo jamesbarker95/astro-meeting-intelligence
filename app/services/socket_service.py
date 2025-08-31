@@ -79,17 +79,17 @@ def register_socket_events(socketio):
             deepgram_manager = getattr(current_app, 'deepgram_manager', None)
             
             if deepgram_manager:
-                # Send audio to Deepgram (now using threading approach)
+                # Send audio to Deepgram (now using official SDK)
                 try:
                     success = deepgram_manager.send_audio(session_id, audio_data)
                     
                     if not success:
-                        logger.warning("⚠️ DEEPGRAM: Failed to send audio", session_id=session_id)
+                        logger.warning("⚠️ DEEPGRAM SDK: Failed to send audio", session_id=session_id)
                     else:
-                        logger.debug("✅ DEEPGRAM: Audio sent successfully", session_id=session_id)
+                        logger.debug("✅ DEEPGRAM SDK: Audio sent successfully", session_id=session_id)
                         
                 except Exception as e:
-                    logger.error("❌ DEEPGRAM: Error processing audio", error=str(e), session_id=session_id)
+                    logger.error("❌ DEEPGRAM SDK: Error processing audio", error=str(e), session_id=session_id)
             else:
                 logger.warning("Deepgram manager not available", session_id=session_id)
             
@@ -236,7 +236,7 @@ def register_socket_events(socketio):
             sessions[session_id]['status'] = 'active'
             sessions[session_id]['started_at'] = datetime.datetime.utcnow().isoformat()
             
-            # Start Deepgram session (now using threading approach)
+            # Start Deepgram session (now using official SDK)
             from flask import current_app
             deepgram_manager = getattr(current_app, 'deepgram_manager', None)
             if deepgram_manager:
@@ -244,23 +244,23 @@ def register_socket_events(socketio):
                     # Import the transcript callback function
                     from ..api.sessions import add_transcript_to_session
                     
-                    # Create transcript callback (async wrapper for threading approach)
+                    # Create transcript callback (async wrapper for SDK)
                     async def transcript_callback(transcript_data):
                         await add_transcript_to_session(session_id, transcript_data)
                     
-                    # Start Deepgram session (now synchronous with threading)
+                    # Start Deepgram session (synchronous call, SDK handles threading)
                     success = deepgram_manager.start_session(session_id, transcript_callback)
                     
                     if success:
                         sessions[session_id]['deepgram_active'] = True
-                        logger.info("🎵 DEEPGRAM: Session started via WebSocket", session_id=session_id)
+                        logger.info("✅ DEEPGRAM SDK: Session started via WebSocket", session_id=session_id)
                     else:
                         sessions[session_id]['deepgram_active'] = False
-                        logger.warning("⚠️ DEEPGRAM: Failed to start session via WebSocket", session_id=session_id)
+                        logger.warning("⚠️ DEEPGRAM SDK: Failed to start session via WebSocket", session_id=session_id)
                         
                 except Exception as e:
                     sessions[session_id]['deepgram_active'] = False
-                    logger.error("❌ DEEPGRAM: Error starting session via WebSocket", error=str(e), session_id=session_id)
+                    logger.error("❌ DEEPGRAM SDK: Error starting session via WebSocket", error=str(e), session_id=session_id)
             else:
                 sessions[session_id]['deepgram_active'] = False
                 logger.warning("Deepgram manager not available via WebSocket", session_id=session_id)
@@ -300,18 +300,18 @@ def register_socket_events(socketio):
                 duration = int((end_time - start_time).total_seconds())
                 sessions[session_id]['duration'] = duration
             
-            # End Deepgram session (now using threading approach)
+            # End Deepgram session (now using official SDK)
             from flask import current_app
             deepgram_manager = getattr(current_app, 'deepgram_manager', None)
             if deepgram_manager:
                 try:
-                    # End Deepgram session (now synchronous with threading)
+                    # End Deepgram session (synchronous call, SDK handles cleanup)
                     deepgram_manager.end_session(session_id)
                     sessions[session_id]['deepgram_active'] = False
-                    logger.info("🎵 DEEPGRAM: Session ended via WebSocket", session_id=session_id)
+                    logger.info("✅ DEEPGRAM SDK: Session ended via WebSocket", session_id=session_id)
                     
                 except Exception as e:
-                    logger.error("❌ DEEPGRAM: Error ending session via WebSocket", error=str(e), session_id=session_id)
+                    logger.error("❌ DEEPGRAM SDK: Error ending session via WebSocket", error=str(e), session_id=session_id)
             
             logger.info("Session ended via WebSocket", session_id=session_id)
             emit('session_ended', {
