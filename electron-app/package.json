@@ -1,0 +1,67 @@
+{
+  "name": "astro-electron",
+  "version": "1.0.0",
+  "description": "Astro Meeting Intelligence Platform - Desktop Client",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\" \"wait-on dist/renderer/renderer.js && electron .\"",
+    "dev:main": "tsc -p src/main/tsconfig.json --watch",
+    "dev:renderer": "webpack --mode development --watch",
+    "build": "npm run build:main && npm run build:renderer && npm run copy-html",
+    "build:main": "tsc -p src/main/tsconfig.json",
+    "build:renderer": "webpack --mode production",
+    "copy-html": "cp src/renderer/index.html dist/renderer/",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:dmg": "npm run build && electron-builder --mac --dmg"
+  },
+  "keywords": ["electron", "astro", "meeting", "intelligence"],
+  "author": "Astro Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "concurrently": "^8.0.0",
+    "css-loader": "^6.8.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0",
+    "style-loader": "^3.3.0",
+    "ts-loader": "^9.4.0",
+    "typescript": "^5.0.0",
+    "wait-on": "^7.0.0",
+    "webpack": "^5.88.0",
+    "webpack-cli": "^5.1.0"
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "electron-store": "^8.1.0",
+    "keytar": "^7.9.0",
+    "socket.io-client": "^4.7.0"
+  },
+  "build": {
+    "appId": "com.astro.meetings",
+    "productName": "Astro",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "node_modules/keytar/**/*",
+      "node_modules/speaker/**/*",
+      "node_modules/socket.io-client/**/*",
+      "node_modules/axios/**/*",
+      "node_modules/electron-store/**/*",
+      "node_modules/express/**/*",
+      "node_modules/ws/**/*"
+    ],
+    "mac": {
+      "target": "dmg"
+    },
+    "dmg": {
+      "title": "Astro Meeting Intelligence Platform"
+    },
+    "asar": true,
+    "compression": "maximum"
+  }
+}

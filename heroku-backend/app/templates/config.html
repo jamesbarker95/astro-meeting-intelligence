@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astro Configuration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .nav-brand .rocket {
+            font-size: 1.8rem;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+        
+        .nav-links a {
+            text-decoration: none;
+            color: #666;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+        
+        .nav-links a.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .header h1 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 1.1rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .instructions {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .instructions h4 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+        
+        .instructions ol {
+            margin-left: 1rem;
+        }
+        
+        .instructions li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <span class="rocket">🚀</span>
+                Astro
+            </div>
+            <ul class="nav-links">
+                <li><a href="/" class="active">Configuration</a></li>
+                <li><a href="/sessions">Sessions</a></li>
+                <li><a href="/debug">Debug Logs</a></li>
+                <li><a href="/download">Download App</a></li>
+                <li><a href="/api/docs">API Docs</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Astro Configuration</h1>
+            <p>Configure your API credentials to generate the desktop application</p>
+        </div>
+
+        <form id="configForm">
+            <div class="form-group">
+                <label for="salesforce_client_id">Salesforce Consumer Key (Client ID)</label>
+                <input type="text" id="salesforce_client_id" name="salesforce_client_id" required>
+                <div class="instructions">
+                    <h4>How to get your Salesforce Consumer Key:</h4>
+                    <ol>
+                        <li>Go to <a href="https://login.salesforce.com" target="_blank">Salesforce</a></li>
+                        <li>Navigate to Setup → App Manager</li>
+                        <li>Find your "Astro" app or create a new Connected App</li>
+                        <li>Enable OAuth Settings</li>
+                        <li>Add these callback URLs: <code>astro://oauth/salesforce/callback</code> and <code>https://localhost:3000/oauth/salesforce/callback</code></li>
+                        <li>Copy the Consumer Key</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="salesforce_client_secret">Salesforce Consumer Secret</label>
+                <input type="password" id="salesforce_client_secret" name="salesforce_client_secret" required>
+            </div>
+
+            <div class="form-group">
+                <label for="slack_client_id">Slack Client ID</label>
+                <input type="text" id="slack_client_id" name="slack_client_id" required>
+                <div class="instructions">
+                    <h4>How to get your Slack Client ID:</h4>
+                    <ol>
+                        <li>Go to <a href="https://api.slack.com/apps" target="_blank">Slack API</a></li>
+                        <li>Create a new app or select your existing "Astro" app</li>
+                        <li>Go to Basic Information → App Credentials</li>
+                        <li>Copy the Client ID</li>
+                        <li>Add these redirect URLs: <code>astro://oauth/slack/callback</code> and <code>https://localhost:3000/oauth/slack/callback</code></li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="slack_client_secret">Slack Client Secret</label>
+                <input type="password" id="slack_client_secret" name="slack_client_secret" required>
+            </div>
+
+            <div class="form-group">
+                <label for="deepgram_api_key">Deepgram API Key</label>
+                <input type="password" id="deepgram_api_key" name="deepgram_api_key" required>
+                <div class="instructions">
+                    <h4>How to get your Deepgram API Key:</h4>
+                    <ol>
+                        <li>Go to <a href="https://console.deepgram.com" target="_blank">Deepgram Console</a></li>
+                        <li>Sign up or log in</li>
+                        <li>Go to API Keys section</li>
+                        <li>Create a new API key</li>
+                        <li>Copy the API key</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="slack_channel">Default Slack Channel</label>
+                <input type="text" id="slack_channel" name="slack_channel" value="#general" required>
+            </div>
+
+            <button type="submit" class="btn">Generate Desktop Application</button>
+        </form>
+
+        <div id="status" class="status" style="display: none;"></div>
+    </div>
+
+    <script>
+        document.getElementById('configForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const data = Object.fromEntries(formData);
+            
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const statusDiv = document.getElementById('status');
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Generating...';
+            statusDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch('/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                if (response.ok) {
+                    window.location.href = '/success';
+                } else {
+                    const error = await response.text();
+                    throw new Error(error);
+                }
+            } catch (error) {
+                statusDiv.textContent = 'Error: ' + error.message;
+                statusDiv.className = 'status error';
+                statusDiv.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Generate Desktop Application';
+            }
+        });
+    </script>
+</body>
+</html>

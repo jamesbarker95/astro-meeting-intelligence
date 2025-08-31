@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astro - Configuration Success</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .success-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+        }
+        
+        .config-summary {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 30px 0;
+            text-align: left;
+        }
+        
+        .config-summary h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+        
+        .config-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 10px 0;
+            border-bottom: 1px solid #e1e5e9;
+        }
+        
+        .config-item:last-child {
+            border-bottom: none;
+        }
+        
+        .config-label {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .config-value {
+            color: #666;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
+        .download-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px;
+            transition: transform 0.2s ease;
+        }
+        
+        .download-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .secondary-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1rem;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px;
+            transition: transform 0.2s ease;
+        }
+        
+        .secondary-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .next-steps {
+            background: #e8f4fd;
+            border-left: 4px solid #007bff;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 0 10px 10px 0;
+            text-align: left;
+        }
+        
+        .next-steps h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .next-steps ol {
+            color: #666;
+            line-height: 1.6;
+        }
+        
+        .next-steps li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success-icon">✅</div>
+        
+        <div class="header">
+            <h1>Configuration Complete!</h1>
+            <p>Your Astro desktop app is ready to be generated with your credentials.</p>
+        </div>
+        
+        <div class="config-summary">
+            <h3>Configuration Summary</h3>
+            <div class="config-item">
+                <span class="config-label">Salesforce Client ID:</span>
+                <span class="config-value">{{ config.salesforce_client_id[:10] }}...</span>
+            </div>
+            <div class="config-item">
+                <span class="config-label">Slack Client ID:</span>
+                <span class="config-value">{{ config.slack_client_id[:10] }}...</span>
+            </div>
+            <div class="config-item">
+                <span class="config-label">Deepgram API Key:</span>
+                <span class="config-value">{{ config.deepgram_api_key[:10] }}...</span>
+            </div>
+            <div class="config-item">
+                <span class="config-label">Slack Channel:</span>
+                <span class="config-value">{{ config.slack_channel }}</span>
+            </div>
+        </div>
+        
+        <div class="next-steps">
+            <h3>Next Steps:</h3>
+            <ol>
+                <li>Click "Download Desktop App" to get your customized Astro application</li>
+                <li>Install the app on your Mac</li>
+                <li>Launch Astro and authenticate with Salesforce and Slack</li>
+                <li>Start your first meeting session!</li>
+            </ol>
+        </div>
+        
+        <div class="actions">
+            <a href="{{ url_for('download_app') }}" class="download-btn">
+                📥 Download Desktop App
+            </a>
+            <a href="{{ url_for('config') }}" class="secondary-btn">
+                🔧 Edit Configuration
+            </a>
+        </div>
+    </div>
+</body>
+</html>
