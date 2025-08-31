@@ -57,15 +57,40 @@ def register_socket_events(socketio):
         """Handle incoming audio chunk from client"""
         try:
             session_id = data.get('session_id')
-            audio_data = data.get('audio_data')
+            # Fix field name mismatch: Electron sends 'audio', not 'audio_data'
+            audio_data = data.get('audio') or data.get('audio_data')
             
             if not session_id or not audio_data:
                 emit('error', {'message': 'Session ID and audio data required'})
                 return
             
-            logger.info("Audio chunk received", session_id=session_id, data_size=len(audio_data))
+            logger.debug("Audio chunk received", session_id=session_id, data_size=len(audio_data))
             
-            # Broadcast to all clients in the session room
+            # Get the Deepgram manager from app context
+            from flask import current_app
+            deepgram_manager = getattr(current_app, 'deepgram_manager', None)
+            
+            if deepgram_manager:
+                # Send audio to Deepgram asynchronously
+                import asyncio
+                try:
+                    # Create async task to send audio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    success = loop.run_until_complete(
+                        deepgram_manager.send_audio(session_id, audio_data)
+                    )
+                    loop.close()
+                    
+                    if not success:
+                        logger.warning("Failed to send audio to Deepgram", session_id=session_id)
+                        
+                except Exception as e:
+                    logger.error("Error processing audio with Deepgram", error=str(e), session_id=session_id)
+            else:
+                logger.warning("Deepgram manager not available", session_id=session_id)
+            
+            # Broadcast processing status to session room
             emit('audio_processing', {
                 'session_id': session_id,
                 'status': 'processing',
@@ -153,6 +178,160 @@ def register_socket_events(socketio):
         except Exception as e:
             logger.error("Session status handling failed", error=str(e))
             emit('error', {'message': 'Failed to process session status'})
+    
+    @socketio.on('create_session')
+    def handle_create_session(data):
+        """Handle session creation from WebSocket"""
+        try:
+            logger.info("Creating new session via WebSocket", client_id=request.sid)
+            
+            # Import sessions from main app
+            from .. import sessions
+            import uuid
+            
+            session_id = str(uuid.uuid4())
+            session_data = {
+                'session_id': session_id,
+                'status': 'created',
+                'created_at': datetime.datetime.utcnow().isoformat(),
+                'client_id': request.sid,
+                'type': 'manual',
+                'transcript_count': 0,
+                'word_count': 0,
+                'debug_logs': [],
+                'transcripts': []
+            }
+            
+            # Store in shared sessions dictionary
+            sessions[session_id] = session_data
+            
+            logger.info("Session created via WebSocket", session_id=session_id)
+            emit('session_created', {
+                'success': True,
+                'session': session_data
+            })
+            
+        except Exception as e:
+            logger.error("Error creating session via WebSocket", error=str(e))
+            emit('session_created', {
+                'success': False,
+                'error': str(e)
+            })
+    
+    @socketio.on('start_session')
+    def handle_start_session(data):
+        """Handle session start from WebSocket"""
+        try:
+            session_id = data.get('session_id')
+            logger.info("Starting session via WebSocket", session_id=session_id, client_id=request.sid)
+            
+            from .. import sessions
+            
+            if session_id not in sessions:
+                raise Exception("Session not found")
+            
+            sessions[session_id]['status'] = 'active'
+            sessions[session_id]['started_at'] = datetime.datetime.utcnow().isoformat()
+            
+            # Start Deepgram session
+            from flask import current_app
+            deepgram_manager = getattr(current_app, 'deepgram_manager', None)
+            if deepgram_manager:
+                import asyncio
+                try:
+                    # Import the transcript callback function
+                    from ..api.sessions import add_transcript_to_session
+                    
+                    # Create transcript callback
+                    async def transcript_callback(transcript_data):
+                        await add_transcript_to_session(session_id, transcript_data)
+                    
+                    # Start Deepgram session
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    success = loop.run_until_complete(
+                        deepgram_manager.start_session(session_id, transcript_callback)
+                    )
+                    loop.close()
+                    
+                    if success:
+                        sessions[session_id]['deepgram_active'] = True
+                        logger.info("Deepgram session started via WebSocket", session_id=session_id)
+                    else:
+                        sessions[session_id]['deepgram_active'] = False
+                        logger.warning("Failed to start Deepgram session via WebSocket", session_id=session_id)
+                        
+                except Exception as e:
+                    sessions[session_id]['deepgram_active'] = False
+                    logger.error("Error starting Deepgram session via WebSocket", error=str(e), session_id=session_id)
+            else:
+                sessions[session_id]['deepgram_active'] = False
+                logger.warning("Deepgram manager not available via WebSocket", session_id=session_id)
+            
+            logger.info("Session started via WebSocket", session_id=session_id)
+            emit('session_started', {
+                'success': True,
+                'session': sessions[session_id]
+            })
+            
+        except Exception as e:
+            logger.error("Error starting session via WebSocket", error=str(e))
+            emit('session_started', {
+                'success': False,
+                'error': str(e)
+            })
+    
+    @socketio.on('end_session')
+    def handle_end_session(data):
+        """Handle session end from WebSocket"""
+        try:
+            session_id = data.get('session_id')
+            logger.info("Ending session via WebSocket", session_id=session_id, client_id=request.sid)
+            
+            from .. import sessions
+            
+            if session_id not in sessions:
+                raise Exception("Session not found")
+            
+            sessions[session_id]['status'] = 'completed'
+            sessions[session_id]['ended_at'] = datetime.datetime.utcnow().isoformat()
+            
+            # Calculate duration
+            if sessions[session_id].get('started_at'):
+                start_time = datetime.datetime.fromisoformat(sessions[session_id]['started_at'])
+                end_time = datetime.datetime.fromisoformat(sessions[session_id]['ended_at'])
+                duration = int((end_time - start_time).total_seconds())
+                sessions[session_id]['duration'] = duration
+            
+            # End Deepgram session
+            from flask import current_app
+            deepgram_manager = getattr(current_app, 'deepgram_manager', None)
+            if deepgram_manager:
+                import asyncio
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(deepgram_manager.end_session(session_id))
+                    loop.close()
+                    
+                    sessions[session_id]['deepgram_active'] = False
+                    logger.info("Deepgram session ended via WebSocket", session_id=session_id)
+                    
+                except Exception as e:
+                    logger.error("Error ending Deepgram session via WebSocket", error=str(e), session_id=session_id)
+            
+            logger.info("Session ended via WebSocket", session_id=session_id)
+            emit('session_ended', {
+                'success': True,
+                'session': sessions[session_id]
+            })
+            
+        except Exception as e:
+            logger.error("Error ending session via WebSocket", error=str(e))
+            emit('session_ended', {
+                'success': False,
+                'error': str(e)
+            })
     
     @socketio.on('error')
     def handle_error(data):

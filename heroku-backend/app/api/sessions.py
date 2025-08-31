@@ -101,6 +101,39 @@ def start_session(session_id):
         session_data['salesforce_instance'] = salesforce_tokens.get('instance_url')
         session_data['slack_team'] = slack_tokens.get('team', {}).get('name')
         
+        # Start Deepgram session for transcription
+        from flask import current_app
+        deepgram_manager = getattr(current_app, 'deepgram_manager', None)
+        if deepgram_manager:
+            import asyncio
+            try:
+                # Create transcript callback
+                async def transcript_callback(transcript_data):
+                    # Add transcript to session
+                    await add_transcript_to_session(session_id, transcript_data)
+                
+                # Start Deepgram session
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                success = loop.run_until_complete(
+                    deepgram_manager.start_session(session_id, transcript_callback)
+                )
+                loop.close()
+                
+                if success:
+                    session_data['deepgram_active'] = True
+                    logger.info("Deepgram session started", session_id=session_id)
+                else:
+                    session_data['deepgram_active'] = False
+                    logger.warning("Failed to start Deepgram session", session_id=session_id)
+                    
+            except Exception as e:
+                session_data['deepgram_active'] = False
+                logger.error("Error starting Deepgram session", error=str(e), session_id=session_id)
+        else:
+            session_data['deepgram_active'] = False
+            logger.warning("Deepgram manager not available", session_id=session_id)
+        
         logger.info("Session started", session_id=session_id)
         
         return jsonify({
@@ -122,6 +155,23 @@ def end_session(session_id):
         session_data = active_sessions[session_id]
         session_data['status'] = 'ended'
         session_data['ended_at'] = datetime.datetime.utcnow().isoformat()
+        
+        # End Deepgram session
+        from flask import current_app
+        deepgram_manager = getattr(current_app, 'deepgram_manager', None)
+        if deepgram_manager:
+            import asyncio
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(deepgram_manager.end_session(session_id))
+                loop.close()
+                
+                session_data['deepgram_active'] = False
+                logger.info("Deepgram session ended", session_id=session_id)
+                
+            except Exception as e:
+                logger.error("Error ending Deepgram session", error=str(e), session_id=session_id)
         
         logger.info("Session ended", session_id=session_id)
         
@@ -242,3 +292,64 @@ def list_all_sessions():
     except Exception as e:
         logger.error("All sessions retrieval failed", error=str(e))
         return jsonify({'error': 'All sessions retrieval failed'}), 500
+
+
+async def add_transcript_to_session(session_id: str, transcript_data: dict):
+    """Add transcript from Deepgram to session data"""
+    try:
+        if session_id not in active_sessions:
+            logger.warning("Session not found for transcript", session_id=session_id)
+            return
+        
+        session_data = active_sessions[session_id]
+        
+        # Initialize transcripts list if it doesn't exist
+        if 'transcripts' not in session_data:
+            session_data['transcripts'] = []
+        
+        # Create transcript entry
+        transcript_entry = {
+            'timestamp': datetime.datetime.utcnow().isoformat(),
+            'text': transcript_data.get('transcript', ''),
+            'confidence': transcript_data.get('confidence', 0.0),
+            'is_final': transcript_data.get('is_final', False),
+            'deepgram_timestamp': transcript_data.get('timestamp', 0)
+        }
+        
+        # Add to transcripts
+        session_data['transcripts'].append(transcript_entry)
+        
+        # Update counters
+        if transcript_entry['is_final']:
+            session_data['transcript_count'] += 1
+            session_data['word_count'] += len(transcript_entry['text'].split())
+        
+        # Add to debug logs
+        log_entry = {
+            'timestamp': datetime.datetime.utcnow().isoformat(),
+            'level': 'info',
+            'message': f"Deepgram transcript ({'final' if transcript_entry['is_final'] else 'interim'})",
+            'data': {
+                'text': transcript_entry['text'][:100] + '...' if len(transcript_entry['text']) > 100 else transcript_entry['text'],
+                'confidence': transcript_entry['confidence'],
+                'is_final': transcript_entry['is_final']
+            }
+        }
+        session_data['debug_logs'].append(log_entry)
+        
+        logger.info("Transcript added to session", 
+                   session_id=session_id, 
+                   is_final=transcript_entry['is_final'],
+                   word_count=session_data['word_count'])
+        
+        # Broadcast transcript update via WebSocket
+        from flask_socketio import emit
+        emit('transcript_update', {
+            'session_id': session_id,
+            'transcript': transcript_entry,
+            'total_word_count': session_data['word_count'],
+            'timestamp': transcript_entry['timestamp']
+        }, room=session_id)
+        
+    except Exception as e:
+        logger.error("Error adding transcript to session", error=str(e), session_id=session_id)
