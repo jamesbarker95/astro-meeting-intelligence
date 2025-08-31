@@ -39,11 +39,21 @@ class AssemblyAIManager:
         try:
             logger.info("🎵 ASSEMBLYAI: Starting session", session_id=session_id)
             
+            # Log API key details (safely)
+            logger.info("🔑 ASSEMBLYAI: Using API key", 
+                       session_id=session_id, 
+                       api_key_length=len(self.api_key), 
+                       api_key_prefix=self.api_key[:8] + "...")
+            
             # Create audio queue for this session
+            logger.info("📦 ASSEMBLYAI: Creating audio queue", session_id=session_id)
             self.audio_queues[session_id] = queue.Queue()
             
             # Build WebSocket URL with parameters
             api_endpoint = f"{self.api_endpoint_base}?{urlencode(self.connection_params)}"
+            logger.info("🌐 ASSEMBLYAI: Built WebSocket URL", 
+                       session_id=session_id, 
+                       endpoint=api_endpoint)
             
             # Define event handlers
             def on_open(ws):
@@ -114,13 +124,22 @@ class AssemblyAIManager:
                                session_id=session_id, error=str(e))
             
             def on_error(ws, error):
-                logger.error("❌ ASSEMBLYAI: WebSocket error", session_id=session_id, error=str(error))
+                logger.error("❌ ASSEMBLYAI: WebSocket error", session_id=session_id, error=str(error), error_type=type(error).__name__)
+                # Log additional error details if available
+                if hasattr(error, 'args') and error.args:
+                    logger.error("❌ ASSEMBLYAI: Error details", session_id=session_id, error_args=error.args)
             
             def on_close(ws, close_status_code, close_msg):
                 logger.info("🎵 ASSEMBLYAI: WebSocket closed", 
                           session_id=session_id, 
                           code=close_status_code, 
                           message=close_msg)
+                
+                # Log if this was an unexpected closure
+                if close_status_code != 1000:  # 1000 is normal closure
+                    logger.warning("⚠️ ASSEMBLYAI: Unexpected WebSocket closure", 
+                                 session_id=session_id, 
+                                 code=close_status_code)
                 
                 # Clean up connection data
                 if session_id in self.connections:
@@ -129,6 +148,7 @@ class AssemblyAIManager:
                     del self.audio_queues[session_id]
             
             # Create WebSocket connection
+            logger.info("🔧 ASSEMBLYAI: Creating WebSocketApp", session_id=session_id)
             ws = websocket.WebSocketApp(
                 api_endpoint,
                 header={"Authorization": self.api_key},
@@ -137,12 +157,16 @@ class AssemblyAIManager:
                 on_error=on_error,
                 on_close=on_close,
             )
+            logger.info("✅ ASSEMBLYAI: WebSocketApp created", session_id=session_id)
             
             # Start WebSocket in separate thread
+            logger.info("🧵 ASSEMBLYAI: Starting WebSocket thread", session_id=session_id)
             ws_thread = threading.Thread(target=ws.run_forever, daemon=True)
             ws_thread.start()
+            logger.info("✅ ASSEMBLYAI: WebSocket thread started", session_id=session_id)
             
             # Store connection info
+            logger.info("💾 ASSEMBLYAI: Storing connection info", session_id=session_id)
             self.connections[session_id] = {
                 'websocket': ws,
                 'ws_thread': ws_thread,
@@ -150,17 +174,30 @@ class AssemblyAIManager:
             }
             
             # Give connection a moment to establish
+            logger.info("⏳ ASSEMBLYAI: Waiting for connection to establish", session_id=session_id)
             time.sleep(1)
+            
+            # Check if connection was successful by verifying WebSocket state
+            if ws.sock and ws.sock.connected:
+                logger.info("✅ ASSEMBLYAI: WebSocket connection verified", session_id=session_id)
+            else:
+                logger.warning("⚠️ ASSEMBLYAI: WebSocket connection not established", session_id=session_id)
             
             logger.info("✅ ASSEMBLYAI: Session started successfully", session_id=session_id)
             return True
             
         except Exception as e:
-            logger.error("❌ ASSEMBLYAI: Failed to start session", session_id=session_id, error=str(e))
+            logger.error("❌ ASSEMBLYAI: Failed to start session", session_id=session_id, error=str(e), error_type=type(e).__name__)
+            # Log full traceback for debugging
+            import traceback
+            logger.error("❌ ASSEMBLYAI: Full traceback", session_id=session_id, traceback=traceback.format_exc())
+            
             # Clean up on failure
             if session_id in self.audio_queues:
+                logger.info("🧹 ASSEMBLYAI: Cleaning up audio queue", session_id=session_id)
                 del self.audio_queues[session_id]
             if session_id in self.connections:
+                logger.info("🧹 ASSEMBLYAI: Cleaning up connection", session_id=session_id)
                 del self.connections[session_id]
             return False
 
