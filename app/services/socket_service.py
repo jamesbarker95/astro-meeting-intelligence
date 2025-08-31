@@ -71,22 +71,30 @@ def register_socket_events(socketio):
             deepgram_manager = getattr(current_app, 'deepgram_manager', None)
             
             if deepgram_manager:
-                # Send audio to Deepgram asynchronously
+                # Send audio to Deepgram using thread-safe approach
+                import threading
                 import asyncio
-                try:
-                    # Create async task to send audio
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    success = loop.run_until_complete(
-                        deepgram_manager.send_audio(session_id, audio_data)
-                    )
-                    loop.close()
-                    
-                    if not success:
-                        logger.warning("Failed to send audio to Deepgram", session_id=session_id)
+                
+                def send_audio_async():
+                    try:
+                        # Create new event loop for this thread
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        success = loop.run_until_complete(
+                            deepgram_manager.send_audio(session_id, audio_data)
+                        )
+                        loop.close()
                         
-                except Exception as e:
-                    logger.error("Error processing audio with Deepgram", error=str(e), session_id=session_id)
+                        if not success:
+                            logger.warning("Failed to send audio to Deepgram", session_id=session_id)
+                            
+                    except Exception as e:
+                        logger.error("Error processing audio with Deepgram", error=str(e), session_id=session_id)
+                
+                # Run in separate thread to avoid event loop conflicts
+                thread = threading.Thread(target=send_audio_async)
+                thread.daemon = True
+                thread.start()
             else:
                 logger.warning("Deepgram manager not available", session_id=session_id)
             
@@ -237,33 +245,44 @@ def register_socket_events(socketio):
             from flask import current_app
             deepgram_manager = getattr(current_app, 'deepgram_manager', None)
             if deepgram_manager:
+                import threading
                 import asyncio
-                try:
-                    # Import the transcript callback function
-                    from ..api.sessions import add_transcript_to_session
-                    
-                    # Create transcript callback
-                    async def transcript_callback(transcript_data):
-                        await add_transcript_to_session(session_id, transcript_data)
-                    
-                    # Start Deepgram session
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    success = loop.run_until_complete(
-                        deepgram_manager.start_session(session_id, transcript_callback)
-                    )
-                    loop.close()
-                    
-                    if success:
-                        sessions[session_id]['deepgram_active'] = True
-                        logger.info("Deepgram session started via WebSocket", session_id=session_id)
-                    else:
-                        sessions[session_id]['deepgram_active'] = False
-                        logger.warning("Failed to start Deepgram session via WebSocket", session_id=session_id)
+                
+                def start_deepgram_async():
+                    try:
+                        # Import the transcript callback function
+                        from ..api.sessions import add_transcript_to_session
                         
-                except Exception as e:
-                    sessions[session_id]['deepgram_active'] = False
-                    logger.error("Error starting Deepgram session via WebSocket", error=str(e), session_id=session_id)
+                        # Create transcript callback
+                        async def transcript_callback(transcript_data):
+                            await add_transcript_to_session(session_id, transcript_data)
+                        
+                        # Create new event loop for this thread
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        success = loop.run_until_complete(
+                            deepgram_manager.start_session(session_id, transcript_callback)
+                        )
+                        loop.close()
+                        
+                        if success:
+                            sessions[session_id]['deepgram_active'] = True
+                            logger.info("Deepgram session started via WebSocket", session_id=session_id)
+                        else:
+                            sessions[session_id]['deepgram_active'] = False
+                            logger.warning("Failed to start Deepgram session via WebSocket", session_id=session_id)
+                            
+                    except Exception as e:
+                        sessions[session_id]['deepgram_active'] = False
+                        logger.error("Error starting Deepgram session via WebSocket", error=str(e), session_id=session_id)
+                
+                # Run in separate thread to avoid event loop conflicts
+                thread = threading.Thread(target=start_deepgram_async)
+                thread.daemon = True
+                thread.start()
+                
+                # Set initial state (will be updated by the thread)
+                sessions[session_id]['deepgram_active'] = False
             else:
                 sessions[session_id]['deepgram_active'] = False
                 logger.warning("Deepgram manager not available via WebSocket", session_id=session_id)
@@ -307,18 +326,27 @@ def register_socket_events(socketio):
             from flask import current_app
             deepgram_manager = getattr(current_app, 'deepgram_manager', None)
             if deepgram_manager:
+                import threading
                 import asyncio
-                try:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(deepgram_manager.end_session(session_id))
-                    loop.close()
-                    
-                    sessions[session_id]['deepgram_active'] = False
-                    logger.info("Deepgram session ended via WebSocket", session_id=session_id)
-                    
-                except Exception as e:
-                    logger.error("Error ending Deepgram session via WebSocket", error=str(e), session_id=session_id)
+                
+                def end_deepgram_async():
+                    try:
+                        # Create new event loop for this thread
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(deepgram_manager.end_session(session_id))
+                        loop.close()
+                        
+                        sessions[session_id]['deepgram_active'] = False
+                        logger.info("Deepgram session ended via WebSocket", session_id=session_id)
+                        
+                    except Exception as e:
+                        logger.error("Error ending Deepgram session via WebSocket", error=str(e), session_id=session_id)
+                
+                # Run in separate thread to avoid event loop conflicts
+                thread = threading.Thread(target=end_deepgram_async)
+                thread.daemon = True
+                thread.start()
             
             logger.info("Session ended via WebSocket", session_id=session_id)
             emit('session_ended', {

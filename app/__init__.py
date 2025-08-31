@@ -58,6 +58,22 @@ def create_app():
     def sessions_page():
         return render_template('sessions.html')
     
+    @app.route('/sessions/<session_id>')
+    def session_detail(session_id):
+        """Display detailed view of a specific session"""
+        try:
+            if session_id not in sessions:
+                return render_template('session_detail.html', 
+                                     session={'session_id': session_id, 'status': 'not_found', 'transcripts': []})
+            
+            session = sessions[session_id]
+            return render_template('session_detail.html', session=session)
+            
+        except Exception as e:
+            logger.error("Error loading session detail", error=str(e), session_id=session_id)
+            return render_template('session_detail.html', 
+                                 session={'session_id': session_id, 'status': 'error', 'transcripts': []})
+    
     @app.route('/config', methods=['POST'])
     def save_config():
         try:
