@@ -479,11 +479,11 @@ export class AuthManager {
     // For synchronous access, we'll use a simple approach
     // In a real app, you might want to cache settings in memory
     const defaultSettings: AuthSettings = {
-      salesforce_client_id: '3MVG9Rr0EZ2YOVMa1kkbcICIjiHR7NASkR1K6trIxajevO2otYLhqFAODPoVxPCOkIP5v0kli9dMH7kQjrml1',
-      salesforce_client_secret: '0DC7040F3CC4779D889D69A2C5A2C67EC5CD5D5D8ACF909BFBD1CCB08D51ABA2',
-      slack_client_id: '8072880940752.9433536186757',
-      slack_client_secret: '8ad23c2b9c52adab425d44a13a379992',
-      deepgram_api_key: '547f2a8ba13eab840e01d9f8cf1bb5dc8d1bf259',
+      salesforce_client_id: 'YOUR_SALESFORCE_CLIENT_ID',
+      salesforce_client_secret: 'YOUR_SALESFORCE_CLIENT_SECRET',
+      slack_client_id: 'YOUR_SLACK_CLIENT_ID',
+      slack_client_secret: 'YOUR_SLACK_CLIENT_SECRET',
+      deepgram_api_key: 'YOUR_DEEPGRAM_API_KEY',
       slack_channel: '#general'
     };
     return defaultSettings;
