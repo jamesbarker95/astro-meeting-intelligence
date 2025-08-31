@@ -101,31 +101,25 @@ def start_session(session_id):
         session_data['salesforce_instance'] = salesforce_tokens.get('instance_url')
         session_data['slack_team'] = slack_tokens.get('team', {}).get('name')
         
-        # Start Deepgram session for transcription
+        # Start Deepgram session for transcription (now using threading approach)
         from flask import current_app
         deepgram_manager = getattr(current_app, 'deepgram_manager', None)
         if deepgram_manager:
-            import asyncio
             try:
                 # Create transcript callback
                 async def transcript_callback(transcript_data):
                     # Add transcript to session
                     await add_transcript_to_session(session_id, transcript_data)
                 
-                # Start Deepgram session
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                success = loop.run_until_complete(
-                    deepgram_manager.start_session(session_id, transcript_callback)
-                )
-                loop.close()
+                # Start Deepgram session (now synchronous with threading)
+                success = deepgram_manager.start_session(session_id, transcript_callback)
                 
                 if success:
                     session_data['deepgram_active'] = True
-                    logger.info("Deepgram session started", session_id=session_id)
+                    logger.info("🎵 DEEPGRAM: Session started via REST API", session_id=session_id)
                 else:
                     session_data['deepgram_active'] = False
-                    logger.warning("Failed to start Deepgram session", session_id=session_id)
+                    logger.warning("⚠️ DEEPGRAM: Failed to start session via REST API", session_id=session_id)
                     
             except Exception as e:
                 session_data['deepgram_active'] = False
@@ -156,22 +150,18 @@ def end_session(session_id):
         session_data['status'] = 'ended'
         session_data['ended_at'] = datetime.datetime.utcnow().isoformat()
         
-        # End Deepgram session
+        # End Deepgram session (now using threading approach)
         from flask import current_app
         deepgram_manager = getattr(current_app, 'deepgram_manager', None)
         if deepgram_manager:
-            import asyncio
             try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(deepgram_manager.end_session(session_id))
-                loop.close()
-                
+                # End Deepgram session (now synchronous with threading)
+                deepgram_manager.end_session(session_id)
                 session_data['deepgram_active'] = False
-                logger.info("Deepgram session ended", session_id=session_id)
+                logger.info("🎵 DEEPGRAM: Session ended via REST API", session_id=session_id)
                 
             except Exception as e:
-                logger.error("Error ending Deepgram session", error=str(e), session_id=session_id)
+                logger.error("❌ DEEPGRAM: Error ending session via REST API", error=str(e), session_id=session_id)
         
         logger.info("Session ended", session_id=session_id)
         

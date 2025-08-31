@@ -280,9 +280,9 @@ class MainProcess {
       try {
         console.log('🔗 MAIN IPC: Received audio data from renderer', {
           dataType: typeof audioData,
-          dataLength: audioData.byteLength || audioData.length,
+          dataLength: audioData instanceof ArrayBuffer ? audioData.byteLength : (audioData as any).length,
           isArrayBuffer: audioData instanceof ArrayBuffer,
-          preview: typeof audioData === 'string' ? audioData.substring(0, 20) + '...' : 'binary data'
+          preview: typeof audioData === 'string' ? (audioData as string).substring(0, 20) + '...' : 'binary data'
         });
         
         await this.audioManager.receiveAudioData(audioData);
