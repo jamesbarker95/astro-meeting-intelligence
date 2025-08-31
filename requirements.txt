@@ -11,7 +11,7 @@ deepgram-sdk==4.8.1
 
 # HTTP and async support
 requests==2.31.0
-aiohttp==3.8.6
+aiohttp>=3.9.1
 
 # Salesforce integration
 simple-salesforce==1.12.4
