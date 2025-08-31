@@ -286,20 +286,30 @@ export class WebSocketManager {
   public sendAudioChunk(audioData: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.isConnected) {
+        console.log('❌ WEBSOCKET: Cannot send audio - not connected');
         reject(new Error('WebSocket not connected'));
         return;
       }
       
       if (!this.currentSessionId) {
+        console.log('❌ WEBSOCKET: Cannot send audio - no active session');
         reject(new Error('No active session for audio transmission'));
         return;
       }
 
-      console.log('Sending audio chunk, session:', this.currentSessionId);
+      console.log('📡 WEBSOCKET: Sending audio chunk', {
+        sessionId: this.currentSessionId,
+        dataLength: audioData.length,
+        dataPreview: audioData.substring(0, 20) + '...',
+        socketConnected: this.isConnected
+      });
+      
       this.socket.emit('audio_chunk', {
         session_id: this.currentSessionId,
         audio: audioData
       });
+      
+      console.log('✅ WEBSOCKET: Audio chunk emitted successfully');
       
       // For audio chunks, we don't wait for acknowledgment
       resolve(true);

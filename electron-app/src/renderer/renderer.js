@@ -343,15 +343,28 @@ class RendererAudioManager extends EventTarget {
         try {
           // Convert to base64 for WebSocket transmission
           const audioData = btoa(String.fromCharCode(...new Uint8Array(pcmBuffer.buffer)));
+          
+          // Enhanced debug logging
+          console.log('🎵 RENDERER: Sending audio chunk', {
+            sessionId: currentSession.session_id,
+            pcmSamples: pcmBuffer.length,
+            pcmBytes: pcmBuffer.buffer.byteLength,
+            base64Length: audioData.length,
+            base64Preview: audioData.substring(0, 20) + '...',
+            websocketConnected: websocketConnected
+          });
+          
           window.electronAPI.sendAudioData(audioData);
           
-          // Debug log occasionally
-          if (Math.random() < 0.01) { // ~1% of chunks
-            console.log('DEBUG: Sent audio chunk, size:', pcmBuffer.length, 'samples');
-          }
         } catch (error) {
-          console.error('Error sending audio chunk:', error);
+          console.error('❌ RENDERER: Error sending audio chunk:', error);
         }
+      } else {
+        console.log('⚠️ RENDERER: Skipping audio chunk - not ready', {
+          websocketConnected,
+          hasSession: !!currentSession,
+          sessionId: currentSession?.session_id
+        });
       }
       
       // Reset buffers for next chunk

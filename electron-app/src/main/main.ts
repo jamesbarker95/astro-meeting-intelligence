@@ -50,6 +50,9 @@ class MainProcess {
     this.websocketManager = new WebSocketManager(websocketEvents);
     this.audioManager = new AudioManager();
     
+    // Connect AudioManager to WebSocket manager
+    this.audioManager.setWebSocketManager(this.websocketManager);
+    
     this.setupAppEvents();
     this.setupIpcHandlers();
     this.setupAudioEvents();
@@ -275,10 +278,17 @@ class MainProcess {
     // Handle audio data from renderer
     ipcMain.handle('audio:send-data', async (_event, audioData: ArrayBuffer) => {
       try {
-        this.audioManager.receiveAudioData(audioData);
+        console.log('🔗 MAIN IPC: Received audio data from renderer', {
+          dataType: typeof audioData,
+          dataLength: audioData.byteLength || audioData.length,
+          isArrayBuffer: audioData instanceof ArrayBuffer,
+          preview: typeof audioData === 'string' ? audioData.substring(0, 20) + '...' : 'binary data'
+        });
+        
+        await this.audioManager.receiveAudioData(audioData);
         return { success: true };
       } catch (error) {
-        console.error('Error processing audio data:', error);
+        console.error('❌ MAIN IPC: Error processing audio data:', error);
         return { success: false, error: (error as Error).message };
       }
     });

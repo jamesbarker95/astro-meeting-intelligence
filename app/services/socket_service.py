@@ -60,11 +60,19 @@ def register_socket_events(socketio):
             # Fix field name mismatch: Electron sends 'audio', not 'audio_data'
             audio_data = data.get('audio') or data.get('audio_data')
             
+            # Enhanced debug logging
+            logger.info("🎵 HEROKU: Audio chunk received", 
+                       session_id=session_id, 
+                       has_audio_data=bool(audio_data),
+                       audio_data_type=type(audio_data).__name__ if audio_data else None,
+                       audio_data_length=len(audio_data) if audio_data else 0,
+                       audio_preview=audio_data[:20] + '...' if audio_data and len(audio_data) > 20 else audio_data,
+                       data_keys=list(data.keys()))
+            
             if not session_id or not audio_data:
+                logger.error("❌ HEROKU: Missing required data", session_id=session_id, has_audio=bool(audio_data))
                 emit('error', {'message': 'Session ID and audio data required'})
                 return
-            
-            logger.debug("Audio chunk received", session_id=session_id, data_size=len(audio_data))
             
             # Get the Deepgram manager from app context
             from flask import current_app
