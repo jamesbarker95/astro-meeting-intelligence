@@ -101,32 +101,32 @@ def start_session(session_id):
         session_data['salesforce_instance'] = salesforce_tokens.get('instance_url')
         session_data['slack_team'] = slack_tokens.get('team', {}).get('name')
         
-        # Start Deepgram session for transcription (now using official SDK)
+        # Start AssemblyAI session for transcription
         from flask import current_app
-        deepgram_manager = getattr(current_app, 'deepgram_manager', None)
-        if deepgram_manager:
+        assemblyai_manager = getattr(current_app, 'assemblyai_manager', None)
+        if assemblyai_manager:
             try:
                 # Create transcript callback
                 async def transcript_callback(transcript_data):
                     # Add transcript to session
                     await add_transcript_to_session(session_id, transcript_data)
                 
-                # Start Deepgram session (synchronous call, SDK handles threading)
-                success = deepgram_manager.start_session(session_id, transcript_callback)
+                # Start AssemblyAI session
+                success = assemblyai_manager.start_session(session_id, transcript_callback)
                 
                 if success:
-                    session_data['deepgram_active'] = True
-                    logger.info("✅ DEEPGRAM SDK: Session started via REST API", session_id=session_id)
+                    session_data['assemblyai_active'] = True
+                    logger.info("✅ ASSEMBLYAI: Session started via REST API", session_id=session_id)
                 else:
-                    session_data['deepgram_active'] = False
-                    logger.warning("⚠️ DEEPGRAM SDK: Failed to start session via REST API", session_id=session_id)
+                    session_data['assemblyai_active'] = False
+                    logger.warning("⚠️ ASSEMBLYAI: Failed to start session via REST API", session_id=session_id)
                     
             except Exception as e:
-                session_data['deepgram_active'] = False
-                logger.error("Error starting Deepgram session", error=str(e), session_id=session_id)
+                session_data['assemblyai_active'] = False
+                logger.error("Error starting AssemblyAI session", error=str(e), session_id=session_id)
         else:
-            session_data['deepgram_active'] = False
-            logger.warning("Deepgram manager not available", session_id=session_id)
+            session_data['assemblyai_active'] = False
+            logger.warning("AssemblyAI manager not available", session_id=session_id)
         
         logger.info("Session started", session_id=session_id)
         
@@ -150,18 +150,18 @@ def end_session(session_id):
         session_data['status'] = 'ended'
         session_data['ended_at'] = datetime.datetime.utcnow().isoformat()
         
-        # End Deepgram session (now using official SDK)
+        # End AssemblyAI session
         from flask import current_app
-        deepgram_manager = getattr(current_app, 'deepgram_manager', None)
-        if deepgram_manager:
+        assemblyai_manager = getattr(current_app, 'assemblyai_manager', None)
+        if assemblyai_manager:
             try:
-                # End Deepgram session (synchronous call, SDK handles cleanup)
-                deepgram_manager.end_session(session_id)
-                session_data['deepgram_active'] = False
-                logger.info("✅ DEEPGRAM SDK: Session ended via REST API", session_id=session_id)
+                # End AssemblyAI session
+                assemblyai_manager.end_session(session_id)
+                session_data['assemblyai_active'] = False
+                logger.info("✅ ASSEMBLYAI: Session ended via REST API", session_id=session_id)
                 
             except Exception as e:
-                logger.error("❌ DEEPGRAM SDK: Error ending session via REST API", error=str(e), session_id=session_id)
+                logger.error("❌ ASSEMBLYAI: Error ending session via REST API", error=str(e), session_id=session_id)
         
         logger.info("Session ended", session_id=session_id)
         

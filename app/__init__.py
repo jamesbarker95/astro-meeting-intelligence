@@ -133,11 +133,11 @@ def create_app():
             "version": "1.0.0"
         })
     
-    # Initialize Deepgram service for real-time transcription
-    from .services.deepgram_service import DeepgramManager
-    deepgram_api_key = os.environ.get('DEEPGRAM_API_KEY', '547f2a8ba13eab840e01d9f8cf1bb5dc8d1bf259')
-    app.deepgram_manager = DeepgramManager(deepgram_api_key)
-    logger.info("Deepgram manager initialized", api_key_length=len(deepgram_api_key))
+    # Initialize AssemblyAI service for real-time transcription
+    from .services.assemblyai_service import AssemblyAIManager
+    assemblyai_api_key = 'adec0151627147e9813c8da9cf7bcb4d'  # Hardcoded for now
+    app.assemblyai_manager = AssemblyAIManager(assemblyai_api_key)
+    logger.info("AssemblyAI manager initialized", api_key_length=len(assemblyai_api_key))
     
     # Register WebSocket event handlers from socket service
     from .services.socket_service import register_socket_events

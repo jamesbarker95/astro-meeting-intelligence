@@ -74,24 +74,24 @@ def register_socket_events(socketio):
                 emit('error', {'message': 'Session ID and audio data required'})
                 return
             
-            # Get the Deepgram manager from app context
+            # Get the AssemblyAI manager from app context
             from flask import current_app
-            deepgram_manager = getattr(current_app, 'deepgram_manager', None)
+            assemblyai_manager = getattr(current_app, 'assemblyai_manager', None)
             
-            if deepgram_manager:
-                # Send audio to Deepgram (now using official SDK)
+            if assemblyai_manager:
+                # Send audio to AssemblyAI
                 try:
-                    success = deepgram_manager.send_audio(session_id, audio_data)
+                    success = assemblyai_manager.send_audio(session_id, audio_data)
                     
                     if not success:
-                        logger.warning("⚠️ DEEPGRAM SDK: Failed to send audio", session_id=session_id)
+                        logger.warning("⚠️ ASSEMBLYAI: Failed to send audio", session_id=session_id)
                     else:
-                        logger.debug("✅ DEEPGRAM SDK: Audio sent successfully", session_id=session_id)
+                        logger.debug("✅ ASSEMBLYAI: Audio sent successfully", session_id=session_id)
                         
                 except Exception as e:
-                    logger.error("❌ DEEPGRAM SDK: Error processing audio", error=str(e), session_id=session_id)
+                    logger.error("❌ ASSEMBLYAI: Error processing audio", error=str(e), session_id=session_id)
             else:
-                logger.warning("Deepgram manager not available", session_id=session_id)
+                logger.warning("AssemblyAI manager not available", session_id=session_id)
             
             # Broadcast processing status to session room
             emit('audio_processing', {
@@ -236,34 +236,34 @@ def register_socket_events(socketio):
             sessions[session_id]['status'] = 'active'
             sessions[session_id]['started_at'] = datetime.datetime.utcnow().isoformat()
             
-            # Start Deepgram session (now using official SDK)
+            # Start AssemblyAI session
             from flask import current_app
-            deepgram_manager = getattr(current_app, 'deepgram_manager', None)
-            if deepgram_manager:
+            assemblyai_manager = getattr(current_app, 'assemblyai_manager', None)
+            if assemblyai_manager:
                 try:
                     # Import the transcript callback function
                     from ..api.sessions import add_transcript_to_session
                     
-                    # Create transcript callback (async wrapper for SDK)
+                    # Create transcript callback (async wrapper)
                     async def transcript_callback(transcript_data):
                         await add_transcript_to_session(session_id, transcript_data)
                     
-                    # Start Deepgram session (synchronous call, SDK handles threading)
-                    success = deepgram_manager.start_session(session_id, transcript_callback)
+                    # Start AssemblyAI session
+                    success = assemblyai_manager.start_session(session_id, transcript_callback)
                     
                     if success:
-                        sessions[session_id]['deepgram_active'] = True
-                        logger.info("✅ DEEPGRAM SDK: Session started via WebSocket", session_id=session_id)
+                        sessions[session_id]['assemblyai_active'] = True
+                        logger.info("✅ ASSEMBLYAI: Session started via WebSocket", session_id=session_id)
                     else:
-                        sessions[session_id]['deepgram_active'] = False
-                        logger.warning("⚠️ DEEPGRAM SDK: Failed to start session via WebSocket", session_id=session_id)
+                        sessions[session_id]['assemblyai_active'] = False
+                        logger.warning("⚠️ ASSEMBLYAI: Failed to start session via WebSocket", session_id=session_id)
                         
                 except Exception as e:
-                    sessions[session_id]['deepgram_active'] = False
-                    logger.error("❌ DEEPGRAM SDK: Error starting session via WebSocket", error=str(e), session_id=session_id)
+                    sessions[session_id]['assemblyai_active'] = False
+                    logger.error("❌ ASSEMBLYAI: Error starting session via WebSocket", error=str(e), session_id=session_id)
             else:
-                sessions[session_id]['deepgram_active'] = False
-                logger.warning("Deepgram manager not available via WebSocket", session_id=session_id)
+                sessions[session_id]['assemblyai_active'] = False
+                logger.warning("AssemblyAI manager not available via WebSocket", session_id=session_id)
             
             logger.info("Session started via WebSocket", session_id=session_id)
             emit('session_started', {
@@ -300,18 +300,18 @@ def register_socket_events(socketio):
                 duration = int((end_time - start_time).total_seconds())
                 sessions[session_id]['duration'] = duration
             
-            # End Deepgram session (now using official SDK)
+            # End AssemblyAI session
             from flask import current_app
-            deepgram_manager = getattr(current_app, 'deepgram_manager', None)
-            if deepgram_manager:
+            assemblyai_manager = getattr(current_app, 'assemblyai_manager', None)
+            if assemblyai_manager:
                 try:
-                    # End Deepgram session (synchronous call, SDK handles cleanup)
-                    deepgram_manager.end_session(session_id)
-                    sessions[session_id]['deepgram_active'] = False
-                    logger.info("✅ DEEPGRAM SDK: Session ended via WebSocket", session_id=session_id)
+                    # End AssemblyAI session
+                    assemblyai_manager.end_session(session_id)
+                    sessions[session_id]['assemblyai_active'] = False
+                    logger.info("✅ ASSEMBLYAI: Session ended via WebSocket", session_id=session_id)
                     
                 except Exception as e:
-                    logger.error("❌ DEEPGRAM SDK: Error ending session via WebSocket", error=str(e), session_id=session_id)
+                    logger.error("❌ ASSEMBLYAI: Error ending session via WebSocket", error=str(e), session_id=session_id)
             
             logger.info("Session ended via WebSocket", session_id=session_id)
             emit('session_ended', {
