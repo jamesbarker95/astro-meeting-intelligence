@@ -316,6 +316,11 @@ def list_all_sessions():
         logger.error("All sessions retrieval failed", error=str(e))
         return jsonify({'error': 'All sessions retrieval failed'}), 500
 
+@sessions_bp.route('/test', methods=['GET'])
+def test_route():
+    """Test route to verify routing works"""
+    return jsonify({'status': 'success', 'message': 'Test route working!'})
+
 @sessions_bp.route('/<session_id>/transcripts', methods=['GET'])
 def get_session_transcripts(session_id):
     """Get all transcripts for a session"""
