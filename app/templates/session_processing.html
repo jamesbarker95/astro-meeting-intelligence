@@ -431,7 +431,39 @@
             updateStats();
         }
         
+        // Load existing sessions on page load
+        function loadExistingSessions() {
+            fetch('/api/sessions')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('📊 Loading existing sessions:', data);
+                    if (data.sessions) {
+                        data.sessions.forEach(session => {
+                            const sessionId = session.session_id;
+                            activeSessions.set(sessionId, {
+                                heroku_id: sessionId,
+                                assemblyai_id: null,
+                                status: session.status || 'active',
+                                created_at: new Date(session.created_at || Date.now()),
+                                transcript_count: session.transcript_count || 0
+                            });
+                            
+                            // Update total transcripts
+                            if (session.transcript_count) {
+                                totalTranscripts += session.transcript_count;
+                            }
+                        });
+                        updateSessionMappings();
+                        updateStats();
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Error loading existing sessions:', error);
+                });
+        }
+        
         // Load initial data
+        loadExistingSessions();
         updateStats();
         
         console.log('🎯 Session Processing monitoring initialized');
