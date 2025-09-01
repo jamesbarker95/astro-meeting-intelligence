@@ -59,7 +59,7 @@ if __name__ == "__main__":
     session_id = "2cf5b705-157d-4e04-b803-08bfb09cc4ec"
     
     # Test transcript
-    transcript_text = "Hello, this is a test transcript added manually to verify the data storage system is working correctly."
+    transcript_text = "This is the second test transcript. It should appear in the transcripts array and be visible on the frontend!"
     
     success = add_transcript_to_session(
         session_id=session_id,
