@@ -344,22 +344,22 @@ def list_all_sessions():
         logger.error("All sessions retrieval failed", error=str(e))
         return jsonify({'error': 'All sessions retrieval failed'}), 500
 
-# PUT THE MOST GENERIC PARAMETERIZED ROUTE LAST
-@sessions_bp.route('/<session_id>', methods=['GET'])
-def get_session(session_id):
-    """Get session details"""
-    try:
-        if session_id not in active_sessions:
-            return jsonify({'error': 'Session not found'}), 404
-        
-        return jsonify({
-            'status': 'success',
-            'session': active_sessions[session_id]
-        })
-        
-    except Exception as e:
-        logger.error("Session retrieval failed", session_id=session_id, error=str(e))
-        return jsonify({'error': 'Session retrieval failed'}), 500
+# TEMPORARILY REMOVED THE CATCH-ALL ROUTE TO TEST SPECIFIC ROUTES
+# @sessions_bp.route('/<session_id>', methods=['GET'])
+# def get_session(session_id):
+#     """Get session details"""
+#     try:
+#         if session_id not in active_sessions:
+#             return jsonify({'error': 'Session not found'}), 404
+#         
+#         return jsonify({
+#             'status': 'success',
+#             'session': active_sessions[session_id]
+#         })
+#         
+#     except Exception as e:
+#         logger.error("Session retrieval failed", session_id=session_id, error=str(e))
+#         return jsonify({'error': 'Session retrieval failed'}), 500
 
 async def add_transcript_to_session(session_id: str, transcript_data: dict):
     """Add transcript from Deepgram to session data"""
