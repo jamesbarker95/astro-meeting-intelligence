@@ -77,6 +77,34 @@ def create_app():
     def session_processing():
         return render_template('session_processing.html')
     
+    @app.route('/live-sessions')
+    def live_sessions():
+        """Live sessions dashboard with real-time updates"""
+        return render_template('live_sessions.html')
+    
+    @app.route('/live-sessions/<session_id>')
+    def live_session_detail(session_id):
+        """Live session detail with real-time transcript streaming"""
+        try:
+            if session_id not in sessions:
+                # Create a placeholder session for live viewing
+                session = {
+                    'session_id': session_id, 
+                    'status': 'not_found', 
+                    'transcripts': [],
+                    'transcript_count': 0,
+                    'word_count': 0,
+                    'created_at': datetime.now().isoformat()
+                }
+            else:
+                session = sessions[session_id]
+            
+            return render_template('live_session_detail.html', session=session)
+        except Exception as e:
+            logger.error("Error loading live session detail", error=str(e), session_id=session_id)
+            return render_template('live_session_detail.html', 
+                                 session={'session_id': session_id, 'status': 'error', 'transcripts': []})
+    
     @app.route('/config', methods=['POST'])
     def save_config():
         try:

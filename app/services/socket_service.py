@@ -1,4 +1,4 @@
-from flask_socketio import emit, join_room, leave_room
+from flask_socketio import emit, join_room, leave_room, request
 import logging
 from structlog import get_logger
 
@@ -28,12 +28,28 @@ def register_socket_events(socketio):
                 return
             
             join_room(session_id)
+            logger.info("Client joined session room", session_id=session_id, sid=request.sid)
+            emit('joined_session', {'session_id': session_id, 'status': 'joined'})
+            
+        except Exception as e:
+            logger.error("Join session failed", error=str(e))
+            emit('error', {'message': 'Failed to join session room'})
+    
+    @socketio.on('join')
+    def handle_join(session_id):
+        """Simple join handler for live pages (accepts session_id directly)"""
+        try:
+            if not session_id:
+                emit('error', {'message': 'Session ID required'})
+                return
+            
+            join_room(session_id)
             logger.info("Client joined session", session_id=session_id, sid=request.sid)
             emit('joined_session', {'session_id': session_id, 'status': 'joined'})
             
         except Exception as e:
             logger.error("Join session failed", error=str(e))
-            emit('error', {'message': 'Failed to join session'})
+            emit('error', {'message': 'Failed to join session room'})
     
     @socketio.on('leave_session')
     def handle_leave_session(data):
