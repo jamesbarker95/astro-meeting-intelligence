@@ -75,16 +75,59 @@ def register_socket_events(socketio):
     def handle_transcript_line(data):
         """Handle incoming transcript line from client"""
         try:
+            from .. import sessions as active_sessions
+            
             session_id = data.get('session_id')
             transcript = data.get('transcript')
             speaker = data.get('speaker', 'unknown')
             confidence = data.get('confidence', 0.0)
+            is_final = data.get('is_final', False)
             
             if not session_id or not transcript:
                 emit('error', {'message': 'Session ID and transcript required'})
                 return
             
-            logger.info("Transcript line received", session_id=session_id, transcript=transcript[:50] + "...")
+            logger.info("Transcript line received", session_id=session_id, transcript=transcript[:50] + "...", is_final=is_final)
+            
+            # Create session if it doesn't exist
+            if session_id not in active_sessions:
+                logger.info("Creating session for transcript", session_id=session_id)
+                active_sessions[session_id] = {
+                    'session_id': session_id,
+                    'status': 'active',
+                    'created_at': datetime.datetime.utcnow().isoformat(),
+                    'started_at': datetime.datetime.utcnow().isoformat(),
+                    'transcripts': [],
+                    'transcript_count': 0,
+                    'word_count': 0,
+                    'type': 'auto_created'
+                }
+            
+            # Initialize transcripts array if it doesn't exist
+            if 'transcripts' not in active_sessions[session_id]:
+                active_sessions[session_id]['transcripts'] = []
+            
+            # Create transcript entry
+            transcript_entry = {
+                'transcript': transcript,
+                'speaker': speaker,
+                'confidence': confidence,
+                'is_final': is_final,
+                'timestamp': datetime.datetime.utcnow().isoformat(),
+                'sequence': len(active_sessions[session_id]['transcripts'])
+            }
+            
+            # Add to session data
+            active_sessions[session_id]['transcripts'].append(transcript_entry)
+            
+            # Update counts
+            active_sessions[session_id]['transcript_count'] = len(active_sessions[session_id]['transcripts'])
+            if is_final:
+                # Count words in final transcripts only
+                word_count = sum(len(t['transcript'].split()) for t in active_sessions[session_id]['transcripts'] if t.get('is_final', False))
+                active_sessions[session_id]['word_count'] = word_count
+            
+            logger.info("Transcript stored", session_id=session_id, total_transcripts=active_sessions[session_id]['transcript_count'], is_final=is_final)
             
             # Broadcast transcript to all clients in the session room
             emit('transcript_update', {
@@ -92,6 +135,7 @@ def register_socket_events(socketio):
                 'transcript': transcript,
                 'speaker': speaker,
                 'confidence': confidence,
+                'is_final': is_final,
                 'timestamp': datetime.datetime.utcnow().isoformat()
             }, room=session_id)
             
