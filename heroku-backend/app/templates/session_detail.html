@@ -385,15 +385,15 @@
 
         async function loadSessionDetails() {
             try {
+                console.log('📊 Loading session details...');
                 const response = await fetch(`/api/sessions/${sessionId}`);
                 const data = await response.json();
                 
                 if (data.status === 'success') {
                     renderSessionInfo(data.session);
-                    if (data.session.transcripts) {
-                        transcripts = data.session.transcripts;
-                        renderTranscripts();
-                    }
+                    
+                    // Load stored transcripts from the dedicated API endpoint
+                    await loadStoredTranscripts();
                 } else {
                     document.getElementById('session-info').innerHTML = `
                         <div class="empty-transcripts">
@@ -412,6 +412,36 @@
                         <p>${error.message}</p>
                     </div>
                 `;
+            }
+        }
+
+        async function loadStoredTranscripts() {
+            try {
+                console.log('📝 Loading stored transcripts...');
+                const response = await fetch(`/api/sessions/${sessionId}/transcripts`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    console.log('📝 Loaded stored transcripts:', data.transcripts.all.length, 'total');
+                    
+                    // Load existing transcripts into the array
+                    transcripts = data.transcripts.all || [];
+                    
+                    // Render the stored transcripts
+                    renderTranscripts();
+                    
+                    // Update the header to show this is stored + live data
+                    const header = document.querySelector('.transcript-header h2');
+                    if (transcripts.length > 0) {
+                        header.textContent = `📝 Stored Transcripts (${transcripts.length}) + Live Updates`;
+                    } else {
+                        header.textContent = '📝 Live Transcription';
+                    }
+                } else {
+                    console.error('Failed to load stored transcripts:', data.error);
+                }
+            } catch (error) {
+                console.error('Error loading stored transcripts:', error);
             }
         }
 
