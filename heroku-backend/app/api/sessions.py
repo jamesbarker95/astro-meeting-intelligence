@@ -188,12 +188,20 @@ def end_session(session_id):
 @sessions_bp.route('/test', methods=['GET'])
 def test_route():
     """Test route to verify routing works"""
+    logger.info("🎯 TEST ROUTE HIT! This route is working!")
     return jsonify({'status': 'success', 'message': 'Test route working!'})
 
 @sessions_bp.route('/debug-routing-test', methods=['GET'])
 def debug_routing_test():
     """Definitive test route that cannot be caught by session route"""
+    logger.info("🎯 DEBUG ROUTING TEST HIT!")
     return jsonify({'status': 'SUCCESS', 'message': 'ROUTING IS WORKING!', 'route': '/debug-routing-test'})
+
+@sessions_bp.route('/definitely-unique-route-name', methods=['GET'])
+def definitely_unique_route():
+    """Route with a name that cannot possibly match any session ID"""
+    logger.info("🎯 UNIQUE ROUTE HIT!")
+    return jsonify({'status': 'SUCCESS', 'message': 'UNIQUE ROUTE WORKING!'})
 
 @sessions_bp.route('/session/<session_id>/transcripts', methods=['GET'])
 def get_session_transcripts(session_id):
