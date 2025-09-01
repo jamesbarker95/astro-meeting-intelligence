@@ -374,6 +374,7 @@
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Session detail page loaded, sessionId:', sessionId);
             loadSessionDetails();
             connectWebSocket();
         });
@@ -454,14 +455,16 @@
         }
 
         function connectWebSocket() {
+            console.log('🔌 Attempting to connect to WebSocket...');
             socket = io();
             
             socket.on('connect', function() {
-                console.log('Connected to WebSocket');
+                console.log('✅ Connected to WebSocket');
                 document.getElementById('connection-status').textContent = 'Connected';
                 document.getElementById('connection-status').className = 'connection-status connected';
                 
                 // Join the session room
+                console.log('🏠 Joining session room:', sessionId);
                 socket.emit('join_session', { session_id: sessionId });
             });
             
