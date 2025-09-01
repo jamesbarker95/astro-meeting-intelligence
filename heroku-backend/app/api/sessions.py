@@ -195,7 +195,7 @@ def debug_routing_test():
     """Definitive test route that cannot be caught by session route"""
     return jsonify({'status': 'SUCCESS', 'message': 'ROUTING IS WORKING!', 'route': '/debug-routing-test'})
 
-@sessions_bp.route('/<session_id>/transcripts', methods=['GET'])
+@sessions_bp.route('/session/<session_id>/transcripts', methods=['GET'])
 def get_session_transcripts(session_id):
     """Get all transcripts for a session"""
     try:
