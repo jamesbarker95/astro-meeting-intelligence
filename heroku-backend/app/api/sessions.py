@@ -245,10 +245,29 @@ def add_transcript(session_id):
         }
         
         session_data = active_sessions[session_id]
-        session_data['transcript_count'] += 1
-        session_data['word_count'] += len(transcript_line['text'].split())
         
-        # Add to debug logs
+        # Initialize transcripts array if it doesn't exist
+        if 'transcripts' not in session_data:
+            session_data['transcripts'] = []
+        
+        # Create proper transcript entry
+        transcript_entry = {
+            'transcript': transcript_line['text'],
+            'speaker': transcript_line['speaker'],
+            'confidence': transcript_line['confidence'],
+            'is_final': True,  # Manual transcripts are always final
+            'timestamp': transcript_line['timestamp'],
+            'sequence': len(session_data['transcripts'])
+        }
+        
+        # Add to transcripts array
+        session_data['transcripts'].append(transcript_entry)
+        
+        # Update counts
+        session_data['transcript_count'] = len(session_data['transcripts'])
+        session_data['word_count'] = sum(len(t['transcript'].split()) for t in session_data['transcripts'])
+        
+        # Also add to debug logs for tracking
         log_entry = {
             'timestamp': datetime.datetime.utcnow().isoformat(),
             'level': 'info',
