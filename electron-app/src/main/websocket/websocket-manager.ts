@@ -316,6 +316,41 @@ export class WebSocketManager {
     });
   }
 
+  public sendTranscript(transcriptData: any): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.isConnected) {
+        console.log('❌ WEBSOCKET: Cannot send transcript - not connected');
+        reject(new Error('WebSocket not connected'));
+        return;
+      }
+      
+      if (!this.currentSessionId) {
+        console.log('❌ WEBSOCKET: Cannot send transcript - no active session');
+        reject(new Error('No active session for transcript transmission'));
+        return;
+      }
+
+      console.log('📝 WEBSOCKET: Sending transcript to Heroku:', {
+        sessionId: this.currentSessionId,
+        transcript: transcriptData.transcript?.substring(0, 50) + '...',
+        isFinal: transcriptData.isFinal,
+        confidence: transcriptData.confidence
+      });
+      
+      this.socket.emit('transcript_line', {
+        session_id: this.currentSessionId,
+        transcript: transcriptData.transcript,
+        speaker: 'system', // Since this comes from AssemblyAI
+        confidence: transcriptData.confidence || 1.0,
+        is_final: transcriptData.isFinal || false,
+        timestamp: transcriptData.timestamp || Date.now()
+      });
+      
+      console.log('✅ WEBSOCKET: Transcript sent successfully');
+      resolve(true);
+    });
+  }
+
   public sendTranscriptLine(text: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.isConnected) {

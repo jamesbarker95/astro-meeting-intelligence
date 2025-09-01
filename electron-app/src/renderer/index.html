@@ -264,6 +264,47 @@
             pointer-events: auto;
         }
 
+        /* Transcript styling */
+        .transcript-line {
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            line-height: 1.4;
+        }
+
+        .transcript-line.final {
+            background: #f8f9fa;
+            border-left: 3px solid #28a745;
+        }
+
+        .transcript-line.interim {
+            background: #fff3cd;
+            border-left: 3px solid #ffc107;
+            opacity: 0.8;
+        }
+
+        .timestamp {
+            color: #6c757d;
+            font-size: 0.85em;
+            margin-right: 8px;
+        }
+
+        .transcript-text.final-text {
+            color: #212529;
+            font-weight: 500;
+        }
+
+        .transcript-text.interim-text {
+            color: #856404;
+            font-style: italic;
+        }
+
+        .transcript-meta {
+            color: #6c757d;
+            font-size: 0.8em;
+            margin-left: 8px;
+        }
+
         @media (max-width: 600px) {
             .container {
                 padding: 20px;

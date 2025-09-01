@@ -68,11 +68,14 @@ def create_app():
             
             session = sessions[session_id]
             return render_template('session_detail.html', session=session)
-            
         except Exception as e:
             logger.error("Error loading session detail", error=str(e), session_id=session_id)
             return render_template('session_detail.html', 
                                  session={'session_id': session_id, 'status': 'error', 'transcripts': []})
+    
+    @app.route('/processing')
+    def session_processing():
+        return render_template('session_processing.html')
     
     @app.route('/config', methods=['POST'])
     def save_config():
@@ -133,11 +136,8 @@ def create_app():
             "version": "1.0.0"
         })
     
-    # Initialize AssemblyAI service for real-time transcription
-    from .services.assemblyai_service import AssemblyAIManager
-    assemblyai_api_key = 'adec0151627147e9813c8da9cf7bcb4d'  # Hardcoded for now
-    app.assemblyai_manager = AssemblyAIManager(assemblyai_api_key)
-    logger.info("AssemblyAI manager initialized", api_key_length=len(assemblyai_api_key))
+    # AssemblyAI transcription now handled in Electron desktop app
+    # Backend will receive transcripts via WebSocket instead of raw audio
     
     # Register WebSocket event handlers from socket service
     from .services.socket_service import register_socket_events

@@ -313,10 +313,19 @@ class MainProcess {
       console.error('Audio manager error:', error);
     });
 
-    this.audioManager.on('transcript', (line) => {
-      console.log('Transcript received:', line);
-      this.websocketManager.sendTranscriptLine(line.text);
-      this.mainWindow?.webContents.send('transcript:line', line);
+    this.audioManager.on('transcript', (transcriptData) => {
+      console.log('🎵 MAIN: Transcript received from AssemblyAI:', transcriptData);
+      
+      // Send transcript to renderer for UI display
+      this.mainWindow?.webContents.send('transcript-line', transcriptData);
+      this.mainWindow?.webContents.send('transcript:line', transcriptData);
+      
+      console.log('🎵 MAIN: Transcript forwarded to renderer');
+    });
+
+    this.audioManager.on('transcription_error', (error) => {
+      console.error('🎵 MAIN: AssemblyAI transcription error:', error);
+      this.mainWindow?.webContents.send('audio:error', error);
     });
 
     this.audioManager.on('deepgram-connected', () => {

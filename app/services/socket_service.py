@@ -54,49 +54,16 @@ def register_socket_events(socketio):
     
     @socketio.on('audio_chunk')
     def handle_audio_chunk(data):
-        """Handle incoming audio chunk from client"""
+        """Handle incoming audio chunk from client - DEPRECATED: Audio processing moved to Electron"""
         try:
             session_id = data.get('session_id')
-            # Fix field name mismatch: Electron sends 'audio', not 'audio_data'
-            audio_data = data.get('audio') or data.get('audio_data')
+            logger.info("🎵 HEROKU: Audio chunk received (deprecated - processing moved to Electron)", session_id=session_id)
             
-            # Enhanced debug logging
-            logger.info("🎵 HEROKU: Audio chunk received", 
-                       session_id=session_id, 
-                       has_audio_data=bool(audio_data),
-                       audio_data_type=type(audio_data).__name__ if audio_data else None,
-                       audio_data_length=len(audio_data) if audio_data else 0,
-                       audio_preview=audio_data[:20] + '...' if audio_data and len(audio_data) > 20 else audio_data,
-                       data_keys=list(data.keys()))
-            
-            if not session_id or not audio_data:
-                logger.error("❌ HEROKU: Missing required data", session_id=session_id, has_audio=bool(audio_data))
-                emit('error', {'message': 'Session ID and audio data required'})
-                return
-            
-            # Get the AssemblyAI manager from app context
-            from flask import current_app
-            assemblyai_manager = getattr(current_app, 'assemblyai_manager', None)
-            
-            if assemblyai_manager:
-                # Send audio to AssemblyAI
-                try:
-                    success = assemblyai_manager.send_audio(session_id, audio_data)
-                    
-                    if not success:
-                        logger.warning("⚠️ ASSEMBLYAI: Failed to send audio", session_id=session_id)
-                    else:
-                        logger.debug("✅ ASSEMBLYAI: Audio sent successfully", session_id=session_id)
-                        
-                except Exception as e:
-                    logger.error("❌ ASSEMBLYAI: Error processing audio", error=str(e), session_id=session_id)
-            else:
-                logger.warning("AssemblyAI manager not available", session_id=session_id)
-            
-            # Broadcast processing status to session room
+            # Just acknowledge receipt - actual processing happens in Electron now
             emit('audio_processing', {
                 'session_id': session_id,
-                'status': 'processing',
+                'status': 'received_by_heroku',
+                'message': 'Audio processing moved to Electron app',
                 'timestamp': datetime.datetime.utcnow().isoformat()
             }, room=session_id)
             
@@ -236,34 +203,9 @@ def register_socket_events(socketio):
             sessions[session_id]['status'] = 'active'
             sessions[session_id]['started_at'] = datetime.datetime.utcnow().isoformat()
             
-            # Start AssemblyAI session
-            from flask import current_app
-            assemblyai_manager = getattr(current_app, 'assemblyai_manager', None)
-            if assemblyai_manager:
-                try:
-                    # Import the transcript callback function
-                    from ..api.sessions import add_transcript_to_session
-                    
-                    # Create transcript callback (async wrapper)
-                    async def transcript_callback(transcript_data):
-                        await add_transcript_to_session(session_id, transcript_data)
-                    
-                    # Start AssemblyAI session
-                    success = assemblyai_manager.start_session(session_id, transcript_callback)
-                    
-                    if success:
-                        sessions[session_id]['assemblyai_active'] = True
-                        logger.info("✅ ASSEMBLYAI: Session started via WebSocket", session_id=session_id)
-                    else:
-                        sessions[session_id]['assemblyai_active'] = False
-                        logger.warning("⚠️ ASSEMBLYAI: Failed to start session via WebSocket", session_id=session_id)
-                        
-                except Exception as e:
-                    sessions[session_id]['assemblyai_active'] = False
-                    logger.error("❌ ASSEMBLYAI: Error starting session via WebSocket", error=str(e), session_id=session_id)
-            else:
-                sessions[session_id]['assemblyai_active'] = False
-                logger.warning("AssemblyAI manager not available via WebSocket", session_id=session_id)
+            # AssemblyAI transcription now handled in Electron desktop app
+            sessions[session_id]['assemblyai_active'] = False  # Always false since moved to Electron
+            logger.info("✅ Session started - transcription handled by Electron app", session_id=session_id)
             
             logger.info("Session started via WebSocket", session_id=session_id)
             emit('session_started', {
@@ -300,18 +242,9 @@ def register_socket_events(socketio):
                 duration = int((end_time - start_time).total_seconds())
                 sessions[session_id]['duration'] = duration
             
-            # End AssemblyAI session
-            from flask import current_app
-            assemblyai_manager = getattr(current_app, 'assemblyai_manager', None)
-            if assemblyai_manager:
-                try:
-                    # End AssemblyAI session
-                    assemblyai_manager.end_session(session_id)
-                    sessions[session_id]['assemblyai_active'] = False
-                    logger.info("✅ ASSEMBLYAI: Session ended via WebSocket", session_id=session_id)
-                    
-                except Exception as e:
-                    logger.error("❌ ASSEMBLYAI: Error ending session via WebSocket", error=str(e), session_id=session_id)
+            # AssemblyAI transcription handled in Electron - no cleanup needed on backend
+            sessions[session_id]['assemblyai_active'] = False
+            logger.info("✅ Session ended - transcription was handled by Electron app", session_id=session_id)
             
             logger.info("Session ended via WebSocket", session_id=session_id)
             emit('session_ended', {

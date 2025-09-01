@@ -820,6 +820,8 @@ async function handleStartSession() {
                 console.log('Session started:', startResult);
                 if (startResult.success) {
                     updateStatus('Session started successfully!', 'success');
+                    // Show transcript section
+                    showTranscriptSection();
                 }
                 console.log('Auto-start session result:', startResult);
             }
@@ -856,6 +858,8 @@ async function handleEndSession() {
             currentSession = null;
             updateStatus('Session ended!', 'success');
             updateSessionButton(false);
+            // Hide transcript section
+            hideTranscriptSection();
         } else {
             updateStatus('Failed to end session: ' + result.error, 'error');
         }
@@ -929,6 +933,17 @@ async function handleStartAudioCapture() {
         }
         
         console.log('Both system and microphone audio capture started!');
+        
+        // Initialize AssemblyAI transcription in main process
+        console.log('🎵 RENDERER: Starting AssemblyAI transcription...');
+        try {
+            await window.electronAPI.startAudioCapture();
+            console.log('🎵 RENDERER: AssemblyAI transcription started successfully');
+        } catch (error) {
+            console.error('🎵 RENDERER: Failed to start AssemblyAI transcription:', error);
+            // Continue anyway - audio capture still works without transcription
+        }
+        
         updateStatus(`Dual audio capture started: ${blackHoleDevice.label} + Microphone!`, 'success');
         updateAudioButton(true);
         setupAudioLevelIndicator();
@@ -943,6 +958,16 @@ async function handleStopAudioCapture() {
     try {
         console.log('Stop audio capture button clicked');
         updateStatus('Stopping audio capture...', 'info');
+        
+        // Stop AssemblyAI transcription in main process
+        console.log('🎵 RENDERER: Stopping AssemblyAI transcription...');
+        try {
+            await window.electronAPI.stopAudioCapture();
+            console.log('🎵 RENDERER: AssemblyAI transcription stopped successfully');
+        } catch (error) {
+            console.error('🎵 RENDERER: Failed to stop AssemblyAI transcription:', error);
+            // Continue anyway
+        }
         
         const result = audioManager.stopAudioCapture();
         console.log('Audio capture stop result:', result);
@@ -1150,18 +1175,81 @@ function updateAudioButton(isCapturing) {
     }
 }
 
-function addTranscriptLine(line) {
-    const container = document.getElementById('transcript-container');
-    if (!container) return;
+function showTranscriptSection() {
+    const transcriptSection = document.getElementById('transcript-section');
+    if (transcriptSection) {
+        transcriptSection.classList.remove('hidden');
+        console.log('🎵 UI: Transcript section shown');
+    }
+}
 
+function hideTranscriptSection() {
+    const transcriptSection = document.getElementById('transcript-section');
+    if (transcriptSection) {
+        transcriptSection.classList.add('hidden');
+        console.log('🎵 UI: Transcript section hidden');
+    }
+}
+
+function addTranscriptLine(data) {
+    const container = document.getElementById('transcript-content');
+    if (!container) {
+        console.warn('🎵 UI: Transcript container not found');
+        return;
+    }
+
+    // Handle both string and object data
+    let text, isFinal, confidence;
+    if (typeof data === 'string') {
+        text = data;
+        isFinal = true;
+        confidence = 1.0;
+    } else if (data && typeof data === 'object') {
+        text = data.transcript || data.text || String(data);
+        isFinal = data.isFinal || data.is_final || false;
+        confidence = data.confidence || 1.0;
+    } else {
+        text = String(data);
+        isFinal = true;
+        confidence = 1.0;
+    }
+
+    // Skip empty transcripts
+    if (!text || text.trim().length === 0) {
+        return;
+    }
+
+    console.log('🎵 UI: Adding transcript line:', { text: text.substring(0, 50) + '...', isFinal, confidence });
+
+    // Create transcript line element
     const lineElement = document.createElement('div');
-    lineElement.className = 'transcript-line';
-    lineElement.textContent = `[${new Date().toLocaleTimeString()}] ${line}`;
+    lineElement.className = `transcript-line ${isFinal ? 'final' : 'interim'}`;
+    
+    const timestamp = new Date().toLocaleTimeString();
+    const confidenceText = confidence < 1.0 ? ` (${Math.round(confidence * 100)}%)` : '';
+    const statusText = isFinal ? '' : ' [interim]';
+    
+    lineElement.innerHTML = `
+        <span class="timestamp">[${timestamp}]</span>
+        <span class="transcript-text ${isFinal ? 'final-text' : 'interim-text'}">${text}</span>
+        <span class="transcript-meta">${confidenceText}${statusText}</span>
+    `;
+    
+    // If this is an interim result, replace the last interim line if it exists
+    if (!isFinal) {
+        const lastInterim = container.querySelector('.transcript-line.interim:last-child');
+        if (lastInterim) {
+            lastInterim.remove();
+        }
+    }
     
     container.appendChild(lineElement);
     
     // Auto-scroll to bottom
-    container.scrollTop = container.scrollHeight;
+    const transcriptContainer = document.getElementById('transcript-container');
+    if (transcriptContainer) {
+        transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+    }
 }
 
 function setupAudioLevelIndicator() {
