@@ -32,11 +32,25 @@ class AssemblyAIManager:
 
     def start_session(self, session_id: str, transcript_callback: Callable) -> bool:
         """Start an AssemblyAI transcription session"""
+        # Add print statement to ensure this method is called
+        print(f"🚀 ASSEMBLYAI DEBUG: start_session called for {session_id}")
+        
         if session_id in self.connections:
             logger.warning("🎵 ASSEMBLYAI: Session already active", session_id=session_id)
             return True
 
         try:
+            # Test DNS resolution first
+            print(f"🌐 ASSEMBLYAI DEBUG: Testing DNS resolution for streaming.assemblyai.com")
+            import socket
+            try:
+                ip = socket.gethostbyname('streaming.assemblyai.com')
+                print(f"✅ ASSEMBLYAI DEBUG: DNS resolved to {ip}")
+            except socket.gaierror as dns_error:
+                print(f"❌ ASSEMBLYAI DEBUG: DNS resolution failed: {dns_error}")
+                logger.error("❌ ASSEMBLYAI: DNS resolution failed", session_id=session_id, error=str(dns_error))
+                return False
+            
             logger.info("🎵 ASSEMBLYAI: Starting session", session_id=session_id)
             
             # Log API key details (safely)
@@ -159,11 +173,23 @@ class AssemblyAIManager:
             )
             logger.info("✅ ASSEMBLYAI: WebSocketApp created", session_id=session_id)
             
-            # Start WebSocket in separate thread
+            # Start WebSocket in separate thread with timeout
             logger.info("🧵 ASSEMBLYAI: Starting WebSocket thread", session_id=session_id)
-            ws_thread = threading.Thread(target=ws.run_forever, daemon=True)
+            print(f"🧵 ASSEMBLYAI DEBUG: About to start WebSocket thread for {session_id}")
+            
+            def run_websocket():
+                try:
+                    print(f"🔌 ASSEMBLYAI DEBUG: Calling run_forever for {session_id}")
+                    ws.run_forever(ping_interval=30, ping_timeout=10)
+                    print(f"🔌 ASSEMBLYAI DEBUG: run_forever completed for {session_id}")
+                except Exception as e:
+                    print(f"❌ ASSEMBLYAI DEBUG: run_forever exception for {session_id}: {e}")
+                    logger.error("❌ ASSEMBLYAI: WebSocket run_forever error", session_id=session_id, error=str(e))
+            
+            ws_thread = threading.Thread(target=run_websocket, daemon=True)
             ws_thread.start()
             logger.info("✅ ASSEMBLYAI: WebSocket thread started", session_id=session_id)
+            print(f"✅ ASSEMBLYAI DEBUG: WebSocket thread started for {session_id}")
             
             # Store connection info
             logger.info("💾 ASSEMBLYAI: Storing connection info", session_id=session_id)
