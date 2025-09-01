@@ -185,6 +185,45 @@ def end_session(session_id):
         logger.error("Session end failed", session_id=session_id, error=str(e))
         return jsonify({'error': 'Session end failed'}), 500
 
+@sessions_bp.route('/test', methods=['GET'])
+def test_route():
+    """Test route to verify routing works"""
+    return jsonify({'status': 'success', 'message': 'Test route working!'})
+
+@sessions_bp.route('/<session_id>/transcripts', methods=['GET'])
+def get_session_transcripts(session_id):
+    """Get all transcripts for a session"""
+    try:
+        if session_id not in active_sessions:
+            return jsonify({'error': 'Session not found'}), 404
+        
+        session_data = active_sessions[session_id]
+        transcripts = session_data.get('transcripts', [])
+        
+        # Separate interim and final transcripts
+        interim_transcripts = [t for t in transcripts if not t.get('is_final', False)]
+        final_transcripts = [t for t in transcripts if t.get('is_final', False)]
+        
+        return jsonify({
+            'status': 'success',
+            'session_id': session_id,
+            'transcripts': {
+                'all': transcripts,
+                'final': final_transcripts,
+                'interim': interim_transcripts
+            },
+            'counts': {
+                'total': len(transcripts),
+                'final': len(final_transcripts),
+                'interim': len(interim_transcripts),
+                'words': session_data.get('word_count', 0)
+            }
+        })
+        
+    except Exception as e:
+        logger.error("Transcripts retrieval failed", session_id=session_id, error=str(e))
+        return jsonify({'error': 'Transcripts retrieval failed'}), 500
+
 @sessions_bp.route('/<session_id>', methods=['GET'])
 def get_session(session_id):
     """Get session details"""
@@ -315,46 +354,6 @@ def list_all_sessions():
     except Exception as e:
         logger.error("All sessions retrieval failed", error=str(e))
         return jsonify({'error': 'All sessions retrieval failed'}), 500
-
-@sessions_bp.route('/test', methods=['GET'])
-def test_route():
-    """Test route to verify routing works"""
-    return jsonify({'status': 'success', 'message': 'Test route working!'})
-
-@sessions_bp.route('/<session_id>/transcripts', methods=['GET'])
-def get_session_transcripts(session_id):
-    """Get all transcripts for a session"""
-    try:
-        if session_id not in active_sessions:
-            return jsonify({'error': 'Session not found'}), 404
-        
-        session_data = active_sessions[session_id]
-        transcripts = session_data.get('transcripts', [])
-        
-        # Separate interim and final transcripts
-        interim_transcripts = [t for t in transcripts if not t.get('is_final', False)]
-        final_transcripts = [t for t in transcripts if t.get('is_final', False)]
-        
-        return jsonify({
-            'status': 'success',
-            'session_id': session_id,
-            'transcripts': {
-                'all': transcripts,
-                'final': final_transcripts,
-                'interim': interim_transcripts
-            },
-            'counts': {
-                'total': len(transcripts),
-                'final': len(final_transcripts),
-                'interim': len(interim_transcripts),
-                'words': session_data.get('word_count', 0)
-            }
-        })
-        
-    except Exception as e:
-        logger.error("Transcripts retrieval failed", session_id=session_id, error=str(e))
-        return jsonify({'error': 'Transcripts retrieval failed'}), 500
-
 
 async def add_transcript_to_session(session_id: str, transcript_data: dict):
     """Add transcript from Deepgram to session data"""
