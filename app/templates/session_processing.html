@@ -437,20 +437,24 @@
                 .then(response => response.json())
                 .then(data => {
                     console.log('📊 Loading existing sessions:', data);
-                    if (data.sessions) {
-                        data.sessions.forEach(session => {
+                    // API returns direct array, not object with sessions property
+                    if (Array.isArray(data) && data.length > 0) {
+                        data.forEach(session => {
                             const sessionId = session.session_id;
-                            activeSessions.set(sessionId, {
-                                heroku_id: sessionId,
-                                assemblyai_id: null,
-                                status: session.status || 'active',
-                                created_at: new Date(session.created_at || Date.now()),
-                                transcript_count: session.transcript_count || 0
-                            });
-                            
-                            // Update total transcripts
-                            if (session.transcript_count) {
-                                totalTranscripts += session.transcript_count;
+                            // Only show active sessions (not completed ones)
+                            if (session.status === 'active' || session.status === 'started') {
+                                activeSessions.set(sessionId, {
+                                    heroku_id: sessionId,
+                                    assemblyai_id: null,
+                                    status: session.status,
+                                    created_at: new Date(session.created_at || Date.now()),
+                                    transcript_count: session.transcript_count || 0
+                                });
+                                
+                                // Update total transcripts
+                                if (session.transcript_count) {
+                                    totalTranscripts += session.transcript_count;
+                                }
                             }
                         });
                         updateSessionMappings();
