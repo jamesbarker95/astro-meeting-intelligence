@@ -203,7 +203,7 @@ def definitely_unique_route():
     logger.info("🎯 UNIQUE ROUTE HIT!")
     return jsonify({'status': 'SUCCESS', 'message': 'UNIQUE ROUTE WORKING!'})
 
-@sessions_bp.route('/session/<session_id>/transcripts', methods=['GET'])
+@sessions_bp.route('/transcripts/<session_id>', methods=['GET'])
 def get_session_transcripts(session_id):
     """Get all transcripts for a session"""
     try:
