@@ -447,8 +447,8 @@
         }
 
         async function viewSession(sessionId) {
-            // TODO: Implement session detail view
-            alert(`Viewing session: ${sessionId}`);
+            // Navigate to session detail page
+            window.location.href = `/sessions/${sessionId}`;
         }
 
         async function deleteSession(sessionId) {

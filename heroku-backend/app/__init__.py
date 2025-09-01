@@ -58,6 +58,10 @@ def create_app():
     def sessions_page():
         return render_template('sessions.html')
     
+    @app.route('/sessions/<session_id>')
+    def session_detail(session_id):
+        return render_template('session_detail.html', session_id=session_id)
+    
     @app.route('/config', methods=['POST'])
     def save_config():
         try:

@@ -64,7 +64,8 @@ def create_session():
             'transcript_count': 0,
             'word_count': 0,
             'insights_generated': 0,
-            'debug_logs': []
+            'debug_logs': [],
+            'transcripts': []
         }
         
         active_sessions[session_id] = session_data
@@ -219,7 +220,10 @@ def add_debug_log(session_id):
         
         logger.info("Debug log added", session_id=session_id, message=data.get('message'))
         
-        return jsonify({'status': 'success'})
+        return jsonify({
+            'status': 'success',
+            'log_entry': log_entry
+        })
         
     except Exception as e:
         logger.error("Debug log addition failed", session_id=session_id, error=str(e))

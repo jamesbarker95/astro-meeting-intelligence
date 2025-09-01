@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session {{ session_id }} - Astro</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .nav-brand .rocket {
+            font-size: 1.8rem;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+        
+        .nav-links a {
+            text-decoration: none;
+            color: #666;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+        
+        .nav-links a.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .header h1 {
+            color: #667eea;
+            margin: 0;
+        }
+        
+        .session-id {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9rem;
+            color: #667eea;
+            background: #e3f2fd;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+        }
+        
+        .back-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .back-btn:hover {
+            background: #5a6268;
+        }
+        
+        .session-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: #f8f9fa;
+            border-radius: 12px;
+        }
+        
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .info-label {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 0.25rem;
+            font-weight: 600;
+        }
+        
+        .info-value {
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            display: inline-block;
+            width: fit-content;
+        }
+        
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-completed {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .transcript-section {
+            margin-top: 2rem;
+        }
+        
+        .transcript-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .transcript-header h2 {
+            color: #667eea;
+            margin: 0;
+        }
+        
+        .connection-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .transcript-container {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 1.5rem;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #e9ecef;
+        }
+        
+        .transcript-line {
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        
+        .transcript-line.interim {
+            background: #f8f9fa;
+            border-left-color: #6c757d;
+            opacity: 0.7;
+            font-style: italic;
+        }
+        
+        .transcript-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-size: 0.8rem;
+            color: #666;
+        }
+        
+        .transcript-speaker {
+            font-weight: 600;
+            color: #667eea;
+        }
+        
+        .transcript-confidence {
+            background: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+        }
+        
+        .transcript-text {
+            font-size: 1rem;
+            line-height: 1.5;
+            color: #333;
+        }
+        
+        .transcript-line.interim .transcript-text {
+            color: #6c757d;
+        }
+        
+        .empty-transcripts {
+            text-align: center;
+            padding: 3rem;
+            color: #666;
+        }
+        
+        .empty-transcripts .icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .auto-scroll-toggle {
+            margin-left: 1rem;
+            padding: 0.25rem 0.5rem;
+            border: 1px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        
+        .auto-scroll-toggle.active {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <span class="rocket">🚀</span>
+                Astro
+            </div>
+            <ul class="nav-links">
+                <li><a href="/">Configuration</a></li>
+                <li><a href="/sessions" class="active">Sessions</a></li>
+                <li><a href="/debug">Debug Logs</a></li>
+                <li><a href="/download">Download App</a></li>
+                <li><a href="/api/docs">API Docs</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>📝 Session Details</h1>
+                <div class="session-id">{{ session_id }}</div>
+            </div>
+            <a href="/sessions" class="back-btn">← Back to Sessions</a>
+        </div>
+
+        <div class="session-info" id="session-info">
+            <div class="loading">
+                <div class="spinner"></div>
+                Loading session details...
+            </div>
+        </div>
+
+        <div class="transcript-section">
+            <div class="transcript-header">
+                <h2>🎵 Live Transcription</h2>
+                <div>
+                    <span class="connection-status disconnected" id="connection-status">Disconnected</span>
+                    <button class="auto-scroll-toggle active" id="auto-scroll-toggle" onclick="toggleAutoScroll()">
+                        Auto-scroll
+                    </button>
+                </div>
+            </div>
+            
+            <div class="transcript-container" id="transcript-container">
+                <div class="empty-transcripts">
+                    <div class="icon">🎤</div>
+                    <h3>No transcripts yet</h3>
+                    <p>Start audio capture in the desktop app to see real-time transcription here!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+        const sessionId = '{{ session_id }}';
+        let socket = null;
+        let autoScroll = true;
+        let transcripts = [];
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSessionDetails();
+            connectWebSocket();
+        });
+
+        async function loadSessionDetails() {
+            try {
+                const response = await fetch(`/api/sessions/${sessionId}`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    renderSessionInfo(data.session);
+                    if (data.session.transcripts) {
+                        transcripts = data.session.transcripts;
+                        renderTranscripts();
+                    }
+                } else {
+                    document.getElementById('session-info').innerHTML = `
+                        <div class="empty-transcripts">
+                            <div class="icon">⚠️</div>
+                            <h3>Session not found</h3>
+                            <p>The session ${sessionId} could not be found.</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading session details:', error);
+                document.getElementById('session-info').innerHTML = `
+                    <div class="empty-transcripts">
+                        <div class="icon">⚠️</div>
+                        <h3>Error loading session</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderSessionInfo(session) {
+            const duration = session.duration ? formatDuration(session.duration) : 'N/A';
+            const startedAt = session.started_at ? new Date(session.started_at).toLocaleString() : 'Not started';
+            const endedAt = session.ended_at ? new Date(session.ended_at).toLocaleString() : 'Not ended';
+            
+            document.getElementById('session-info').innerHTML = `
+                <div class="info-item">
+                    <div class="info-label">Status</div>
+                    <div class="info-value">
+                        <span class="status-badge status-${session.status}">${session.status}</span>
+                    </div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Created</div>
+                    <div class="info-value">${new Date(session.created_at).toLocaleString()}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Started</div>
+                    <div class="info-value">${startedAt}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Ended</div>
+                    <div class="info-value">${endedAt}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Duration</div>
+                    <div class="info-value">${duration}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Transcripts</div>
+                    <div class="info-value">${session.transcript_count || 0}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Words</div>
+                    <div class="info-value">${session.word_count || 0}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Type</div>
+                    <div class="info-value">${session.type || 'manual'}</div>
+                </div>
+            `;
+        }
+
+        function connectWebSocket() {
+            socket = io();
+            
+            socket.on('connect', function() {
+                console.log('Connected to WebSocket');
+                document.getElementById('connection-status').textContent = 'Connected';
+                document.getElementById('connection-status').className = 'connection-status connected';
+                
+                // Join the session room
+                socket.emit('join_session', { session_id: sessionId });
+            });
+            
+            socket.on('disconnect', function() {
+                console.log('Disconnected from WebSocket');
+                document.getElementById('connection-status').textContent = 'Disconnected';
+                document.getElementById('connection-status').className = 'connection-status disconnected';
+            });
+            
+            socket.on('joined_session', function(data) {
+                console.log('Joined session room:', data);
+            });
+            
+            socket.on('transcript_update', function(data) {
+                console.log('Transcript received:', data);
+                addTranscript(data);
+            });
+            
+            socket.on('error', function(error) {
+                console.error('WebSocket error:', error);
+            });
+        }
+
+        function addTranscript(transcriptData) {
+            // Add to transcripts array
+            transcripts.push(transcriptData);
+            
+            // Re-render transcripts
+            renderTranscripts();
+            
+            // Auto-scroll if enabled
+            if (autoScroll) {
+                scrollToBottom();
+            }
+        }
+
+        function renderTranscripts() {
+            const container = document.getElementById('transcript-container');
+            
+            if (transcripts.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-transcripts">
+                        <div class="icon">🎤</div>
+                        <h3>No transcripts yet</h3>
+                        <p>Start audio capture in the desktop app to see real-time transcription here!</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const transcriptsHtml = transcripts.map((transcript, index) => {
+                const confidence = Math.round((transcript.confidence || 0) * 100);
+                const timestamp = new Date(transcript.timestamp).toLocaleTimeString();
+                const isFinal = transcript.is_final || false;
+                
+                return `
+                    <div class="transcript-line ${isFinal ? '' : 'interim'}" id="transcript-${index}">
+                        <div class="transcript-meta">
+                            <span class="transcript-speaker">${transcript.speaker || 'Speaker'}</span>
+                            <div>
+                                <span class="transcript-confidence">${confidence}%</span>
+                                <span style="margin-left: 0.5rem;">${timestamp}</span>
+                                ${!isFinal ? '<span style="margin-left: 0.5rem; font-style: italic;">(interim)</span>' : ''}
+                            </div>
+                        </div>
+                        <div class="transcript-text">${transcript.transcript}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            container.innerHTML = transcriptsHtml;
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('transcript-container');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function toggleAutoScroll() {
+            autoScroll = !autoScroll;
+            const toggle = document.getElementById('auto-scroll-toggle');
+            
+            if (autoScroll) {
+                toggle.classList.add('active');
+                toggle.textContent = 'Auto-scroll';
+                scrollToBottom();
+            } else {
+                toggle.classList.remove('active');
+                toggle.textContent = 'Manual scroll';
+            }
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds) return 'N/A';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${secs}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+    </script>
+</body>
+</html>
