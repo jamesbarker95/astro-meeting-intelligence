@@ -226,11 +226,16 @@ def register_socket_events(socketio):
                 'status': 'created',
                 'created_at': datetime.datetime.utcnow().isoformat(),
                 'client_id': request.sid,
-                'type': 'manual',
+                'type': data.get('type', 'manual'),
                 'transcript_count': 0,
                 'word_count': 0,
                 'debug_logs': [],
-                'transcripts': []
+                'transcripts': [],
+                # Context fields from Salesforce events
+                'meeting_brief': data.get('meeting_brief', ''),
+                'competitive_intelligence': data.get('competitive_intelligence', ''),
+                'agent_capabilities': data.get('agent_capabilities', ''),
+                'meeting_info': data.get('meeting_info', {})
             }
             
             # Store in shared sessions dictionary
