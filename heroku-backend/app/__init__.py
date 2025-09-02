@@ -44,12 +44,14 @@ def create_app():
     from .api.auth import auth_bp
     from .api.insights import insights_bp
     from .api.test_salesforce import test_salesforce_bp
+    from .api.test_models_api import test_models_api_bp
     # from .api.audio import audio_bp  # REMOVED - audio processing moved to desktop app
     
     app.register_blueprint(sessions_bp, url_prefix='/api/sessions')
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(insights_bp, url_prefix='/api/insights')
     app.register_blueprint(test_salesforce_bp, url_prefix='/api')
+    app.register_blueprint(test_models_api_bp, url_prefix='/api')
     # app.register_blueprint(audio_bp, url_prefix='/api/audio')  # REMOVED
     
     @app.route('/')
