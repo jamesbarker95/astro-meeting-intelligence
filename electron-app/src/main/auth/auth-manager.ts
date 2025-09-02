@@ -629,56 +629,25 @@ export class AuthManager {
    */
   private parseEventString(eventStr: string): SalesforceEvent | null {
     try {
-      const lines = eventStr.split('\n');
+      // New parsing logic for AstroIsolate_ prefix format
       const event: Partial<SalesforceEvent> = {};
       
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (trimmedLine.startsWith('Event_Id:')) {
-          event.Event_Id = trimmedLine.replace('Event_Id:', '').trim();
-        } else if (trimmedLine.startsWith('Title:')) {
-          event.Title = trimmedLine.replace('Title:', '').trim();
-        } else if (trimmedLine.startsWith('Start:')) {
-          event.Start = trimmedLine.replace('Start:', '').trim();
-        } else if (trimmedLine.startsWith('End:')) {
-          event.End = trimmedLine.replace('End:', '').trim();
-        } else if (trimmedLine.startsWith('Description:')) {
-          // Handle multi-line descriptions
-          const descStart = eventStr.indexOf('Description:');
-          const relatedStart = eventStr.indexOf('RelatedToId:');
-          if (descStart !== -1 && relatedStart !== -1) {
-            event.Description = eventStr.substring(descStart + 12, relatedStart).trim();
-          } else if (descStart !== -1) {
-            event.Description = eventStr.substring(descStart + 12).trim();
-          }
-        } else if (trimmedLine.startsWith('RelatedToId:')) {
-          event.RelatedToId = trimmedLine.replace('RelatedToId:', '').trim();
-        } else if (trimmedLine.startsWith('Meeting Brief:')) {
-          // Handle multi-line Meeting Brief
-          const briefStart = eventStr.indexOf('Meeting Brief:');
-          const competitiveStart = eventStr.indexOf('Competitive Insights:');
-          if (briefStart !== -1 && competitiveStart !== -1) {
-            event.Meeting_Brief = eventStr.substring(briefStart + 14, competitiveStart).trim();
-          } else if (briefStart !== -1) {
-            event.Meeting_Brief = eventStr.substring(briefStart + 14).trim();
-          }
-        } else if (trimmedLine.startsWith('Competitive Insights:')) {
-          // Handle multi-line Competitive Insights
-          const competitiveStart = eventStr.indexOf('Competitive Insights:');
-          const agentStart = eventStr.indexOf('Agent Capabilities:');
-          if (competitiveStart !== -1 && agentStart !== -1) {
-            event.Competitive_Intelligence = eventStr.substring(competitiveStart + 21, agentStart).trim();
-          } else if (competitiveStart !== -1) {
-            event.Competitive_Intelligence = eventStr.substring(competitiveStart + 21).trim();
-          }
-        } else if (trimmedLine.startsWith('Agent Capabilities:')) {
-          // Handle multi-line Agent Capabilities (usually at the end)
-          const agentStart = eventStr.indexOf('Agent Capabilities:');
-          if (agentStart !== -1) {
-            event.Agent_Capabilities = eventStr.substring(agentStart + 19).trim();
-          }
-        }
-      }
+      // Extract fields using AstroIsolate_ prefixes
+      const extractField = (fieldName: string): string => {
+        const pattern = new RegExp(`AstroIsolate_${fieldName}:\\s*([\\s\\S]*?)(?=AstroIsolate_|$)`, 'i');
+        const match = eventStr.match(pattern);
+        return match && match[1] ? match[1].trim() : '';
+      };
+      
+      event.Event_Id = extractField('Event_Id');
+      event.Title = extractField('Title');
+      event.Start = extractField('Start');
+      event.End = extractField('End');
+      event.Description = extractField('Description');
+      event.RelatedToId = extractField('RelatedToId');
+      event.Meeting_Brief = extractField('Meeting_Brief');
+      event.Competitive_Intelligence = extractField('Competitive_Insights');
+      event.Agent_Capabilities = extractField('Agent_Capabilities');
       
       // Validate required fields
       if (event.Event_Id && event.Title && event.RelatedToId) {
