@@ -166,6 +166,48 @@
         
         .status-active-indicator { background: #10b981; }
         .status-inactive-indicator { background: #ef4444; }
+        
+        .context-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        .context-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .context-bubble {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 15px;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .context-bubble h4 {
+            color: #667eea;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .context-bubble p {
+            color: #475569;
+            line-height: 1.6;
+            margin: 0;
+        }
+        
+        .context-empty {
+            color: #94a3b8;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -215,6 +257,35 @@
                 <p>Deepgram</p>
             </div>
         </div>
+        
+        <!-- Context Section -->
+        {% if session.meeting_brief or session.competitive_intelligence or session.agent_capabilities %}
+        <div class="context-section">
+            <h3 style="margin-bottom: 20px; color: #667eea;">📋 Meeting Context</h3>
+            <div class="context-grid">
+                <div class="context-bubble">
+                    <h4>📝 Meeting Brief</h4>
+                    <p class="{% if not session.meeting_brief %}context-empty{% endif %}">
+                        {{ session.meeting_brief or "No meeting brief provided" }}
+                    </p>
+                </div>
+                
+                <div class="context-bubble">
+                    <h4>🏆 Competitive Intelligence</h4>
+                    <p class="{% if not session.competitive_intelligence %}context-empty{% endif %}">
+                        {{ session.competitive_intelligence or "No competitive intelligence provided" }}
+                    </p>
+                </div>
+                
+                <div class="context-bubble">
+                    <h4>🤖 Agent Capabilities</h4>
+                    <p class="{% if not session.agent_capabilities %}context-empty{% endif %}">
+                        {{ session.agent_capabilities or "No agent capabilities provided" }}
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
         
         <div class="transcripts-section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">

@@ -332,6 +332,48 @@
         .transcripts-feed::-webkit-scrollbar-thumb:hover {
             background: #94a3b8;
         }
+        
+        .context-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        .context-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .context-bubble {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 15px;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .context-bubble h4 {
+            color: #667eea;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .context-bubble p {
+            color: #475569;
+            line-height: 1.6;
+            margin: 0;
+        }
+        
+        .context-empty {
+            color: #94a3b8;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -380,6 +422,27 @@
             <div class="stat-card">
                 <div class="stat-number" id="final-count">0</div>
                 <div class="stat-label">Final Transcripts</div>
+            </div>
+        </div>
+        
+        <!-- Context Section -->
+        <div class="context-section" id="context-section" style="display: none;">
+            <h3 style="margin-bottom: 20px; color: #667eea;">📋 Meeting Context</h3>
+            <div class="context-grid">
+                <div class="context-bubble">
+                    <h4>📝 Meeting Brief</h4>
+                    <p id="meeting-brief" class="context-empty">Loading...</p>
+                </div>
+                
+                <div class="context-bubble">
+                    <h4>🏆 Competitive Intelligence</h4>
+                    <p id="competitive-intelligence" class="context-empty">Loading...</p>
+                </div>
+                
+                <div class="context-bubble">
+                    <h4>🤖 Agent Capabilities</h4>
+                    <p id="agent-capabilities" class="context-empty">Loading...</p>
+                </div>
             </div>
         </div>
         
@@ -496,6 +559,9 @@
                 .then(data => {
                     console.log('📊 Session data loaded:', data);
                     
+                    // Load context data
+                    loadContextData(data);
+                    
                     if (data.transcripts && Array.isArray(data.transcripts)) {
                         data.transcripts.forEach(transcript => {
                             addTranscript({
@@ -598,6 +664,51 @@
                 transcriptsFeed.scrollTop = transcriptsFeed.scrollHeight;
             } else {
                 toggle.classList.remove('active');
+            }
+        }
+        
+        function loadContextData(sessionData) {
+            console.log('📋 Loading context data:', sessionData);
+            
+            const contextSection = document.getElementById('context-section');
+            const meetingBrief = document.getElementById('meeting-brief');
+            const competitiveIntelligence = document.getElementById('competitive-intelligence');
+            const agentCapabilities = document.getElementById('agent-capabilities');
+            
+            // Check if any context data exists
+            const hasContext = sessionData.meeting_brief || sessionData.competitive_intelligence || sessionData.agent_capabilities;
+            
+            if (hasContext) {
+                contextSection.style.display = 'block';
+                
+                // Meeting Brief
+                if (sessionData.meeting_brief) {
+                    meetingBrief.textContent = sessionData.meeting_brief;
+                    meetingBrief.className = '';
+                } else {
+                    meetingBrief.textContent = 'No meeting brief provided';
+                    meetingBrief.className = 'context-empty';
+                }
+                
+                // Competitive Intelligence
+                if (sessionData.competitive_intelligence) {
+                    competitiveIntelligence.textContent = sessionData.competitive_intelligence;
+                    competitiveIntelligence.className = '';
+                } else {
+                    competitiveIntelligence.textContent = 'No competitive intelligence provided';
+                    competitiveIntelligence.className = 'context-empty';
+                }
+                
+                // Agent Capabilities
+                if (sessionData.agent_capabilities) {
+                    agentCapabilities.textContent = sessionData.agent_capabilities;
+                    agentCapabilities.className = '';
+                } else {
+                    agentCapabilities.textContent = 'No agent capabilities provided';
+                    agentCapabilities.className = 'context-empty';
+                }
+            } else {
+                contextSection.style.display = 'none';
             }
         }
         
