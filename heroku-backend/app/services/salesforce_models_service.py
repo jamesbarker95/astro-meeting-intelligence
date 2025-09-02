@@ -36,7 +36,8 @@ class SalesforceModelsService:
         
     def _get_token_url(self) -> str:
         """Get the OAuth token endpoint URL"""
-        return f"https://{self.domain}/services/oauth2/token"
+        # Use login.salesforce.com for OAuth (more reliable from Heroku)
+        return "https://login.salesforce.com/services/oauth2/token"
     
     def _is_token_valid(self) -> bool:
         """Check if current token is valid and not expiring soon"""
