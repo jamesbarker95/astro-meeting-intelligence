@@ -36,8 +36,7 @@ class SalesforceModelsService:
         
     def _get_token_url(self) -> str:
         """Get the OAuth token endpoint URL"""
-        # Use login.salesforce.com for OAuth (more reliable from Heroku)
-        return "https://login.salesforce.com/services/oauth2/token"
+        return f"https://{self.domain}/services/oauth2/token"
     
     def _is_token_valid(self) -> bool:
         """Check if current token is valid and not expiring soon"""
@@ -60,7 +59,7 @@ class SalesforceModelsService:
                 'client_secret': self.client_secret
             }
             
-            response = requests.post(token_url, data=data, timeout=30)
+            response = requests.post(token_url, data=data, timeout=60)
             response.raise_for_status()
             
             token_data = response.json()
