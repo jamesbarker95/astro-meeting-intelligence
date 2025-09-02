@@ -351,6 +351,166 @@
             color: #6c757d;
             font-style: italic;
         }
+        
+        /* Meeting Summary Styles */
+        .meeting-summary-section {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e9ecef;
+        }
+        
+        .summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .summary-header h2 {
+            color: #667eea;
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        
+        .summary-status {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .summary-badge {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        .summary-badge.generating {
+            background: linear-gradient(135deg, #ffa726, #ff7043);
+            animation: pulse 2s infinite;
+        }
+        
+        .summary-badge.updated {
+            background: linear-gradient(135deg, #66bb6a, #43a047);
+        }
+        
+        .last-updated {
+            font-size: 0.8rem;
+            color: #666;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+        
+        .summary-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 1.5rem;
+            border-left: 4px solid #667eea;
+        }
+        
+        .summary-card h3 {
+            margin: 0 0 1rem 0;
+            color: #333;
+            font-size: 1.1rem;
+        }
+        
+        .summary-text {
+            line-height: 1.6;
+            color: #444;
+        }
+        
+        .action-items, .questions, .next-steps {
+            color: #444;
+        }
+        
+        .action-item, .question-item, .next-step-item {
+            background: white;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 8px;
+            border-left: 3px solid #667eea;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        
+        .action-item {
+            border-left-color: #28a745;
+        }
+        
+        .question-item {
+            border-left-color: #ffc107;
+        }
+        
+        .next-step-item {
+            border-left-color: #17a2b8;
+        }
+        
+        .action-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            color: #666;
+        }
+        
+        .assignee {
+            font-weight: 600;
+            color: #667eea;
+        }
+        
+        .deadline {
+            font-style: italic;
+        }
+        
+        .summary-placeholder {
+            color: #999;
+            font-style: italic;
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .summary-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            color: #667eea;
+            font-style: italic;
+        }
+        
+        .summary-loading .spinner {
+            width: 16px;
+            height: 16px;
+            border-width: 2px;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        /* Responsive design for summary */
+        @media (max-width: 768px) {
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .summary-header {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+        }
     </style>
 </head>
 <body>
@@ -402,6 +562,53 @@
             </div>
         </div>
 
+        <!-- Meeting Summary Section -->
+        <div class="meeting-summary-section" id="meeting-summary-section" style="display: none;">
+            <div class="summary-header">
+                <h2>🤖 Meeting Summary</h2>
+                <div class="summary-status">
+                    <span class="summary-badge" id="summary-status">Waiting for transcripts...</span>
+                    <span class="last-updated" id="last-updated"></span>
+                </div>
+            </div>
+            
+            <div class="summary-content">
+                <div class="summary-grid">
+                    <!-- Main Summary -->
+                    <div class="summary-card">
+                        <h3>📋 Summary</h3>
+                        <div class="summary-text" id="summary-text">
+                            <div class="summary-placeholder">Meeting summary will appear here after 5 final transcript lines...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Items -->
+                    <div class="summary-card">
+                        <h3>✅ Action Items</h3>
+                        <div class="action-items" id="action-items">
+                            <div class="summary-placeholder">Action items will be identified automatically...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Questions & Concerns -->
+                    <div class="summary-card">
+                        <h3>❓ Questions & Concerns</h3>
+                        <div class="questions" id="questions">
+                            <div class="summary-placeholder">Unresolved questions will be tracked here...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Next Steps -->
+                    <div class="summary-card">
+                        <h3>🎯 Next Steps</h3>
+                        <div class="next-steps" id="next-steps">
+                            <div class="summary-placeholder">Next steps will be identified from the discussion...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="transcript-section">
             <div class="transcript-header">
                 <h2>🎵 Live Transcription</h2>
@@ -449,6 +656,9 @@
                 
                 if (data.status === 'success') {
                     renderSessionInfo(data.session);
+                    
+                    // Load existing meeting summary if available
+                    loadExistingSummary(data.session);
                     
                     // Load stored transcripts from the dedicated API endpoint
                     await loadStoredTranscripts();
@@ -615,6 +825,11 @@
                 addTranscript(data);
             });
             
+            socket.on('meeting_summary_update', function(data) {
+                console.log('Meeting summary update received:', data);
+                updateMeetingSummary(data.summary, data.timestamp);
+            });
+            
             socket.on('error', function(error) {
                 console.error('WebSocket error:', error);
             });
@@ -701,6 +916,111 @@
                 return `${minutes}m ${secs}s`;
             } else {
                 return `${secs}s`;
+            }
+        }
+
+        // Meeting Summary Functions
+        function updateMeetingSummary(summary, timestamp) {
+            console.log('Updating meeting summary:', summary);
+            
+            // Show the summary section if it's hidden
+            const summarySection = document.getElementById('meeting-summary-section');
+            if (summarySection.style.display === 'none') {
+                summarySection.style.display = 'block';
+            }
+            
+            // Update status badge
+            const statusBadge = document.getElementById('summary-status');
+            statusBadge.textContent = 'Updated';
+            statusBadge.className = 'summary-badge updated';
+            
+            // Update timestamp
+            const lastUpdated = document.getElementById('last-updated');
+            const updateTime = new Date(timestamp).toLocaleTimeString();
+            lastUpdated.textContent = `Last updated: ${updateTime}`;
+            
+            // Update summary text
+            const summaryText = document.getElementById('summary-text');
+            if (summary.summary) {
+                summaryText.innerHTML = `<div class="summary-content">${summary.summary}</div>`;
+            } else {
+                summaryText.innerHTML = '<div class="summary-placeholder">No summary available yet...</div>';
+            }
+            
+            // Update action items
+            const actionItems = document.getElementById('action-items');
+            if (summary.actionItems && summary.actionItems.length > 0) {
+                let actionHtml = '';
+                summary.actionItems.forEach(item => {
+                    actionHtml += `
+                        <div class="action-item">
+                            <div class="action-task">${item.task || 'No task specified'}</div>
+                            <div class="action-meta">
+                                <span class="assignee">👤 ${item.assignee || 'Unassigned'}</span>
+                                <span class="deadline">📅 ${item.deadline || 'Not specified'}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                actionItems.innerHTML = actionHtml;
+            } else {
+                actionItems.innerHTML = '<div class="summary-placeholder">No action items identified yet...</div>';
+            }
+            
+            // Update questions
+            const questions = document.getElementById('questions');
+            if (summary.questions && summary.questions.length > 0) {
+                let questionHtml = '';
+                summary.questions.forEach(question => {
+                    questionHtml += `<div class="question-item">${question}</div>`;
+                });
+                questions.innerHTML = questionHtml;
+            } else {
+                questions.innerHTML = '<div class="summary-placeholder">No questions identified yet...</div>';
+            }
+            
+            // Update next steps
+            const nextSteps = document.getElementById('next-steps');
+            if (summary.nextSteps && summary.nextSteps.length > 0) {
+                let stepsHtml = '';
+                summary.nextSteps.forEach(step => {
+                    stepsHtml += `<div class="next-step-item">${step}</div>`;
+                });
+                nextSteps.innerHTML = stepsHtml;
+            } else {
+                nextSteps.innerHTML = '<div class="summary-placeholder">No next steps identified yet...</div>';
+            }
+            
+            // Add a subtle animation to indicate update
+            summarySection.style.transform = 'scale(1.01)';
+            setTimeout(() => {
+                summarySection.style.transform = 'scale(1)';
+            }, 200);
+        }
+
+        function showSummaryGenerating() {
+            // Show generating status
+            const statusBadge = document.getElementById('summary-status');
+            statusBadge.textContent = 'Generating...';
+            statusBadge.className = 'summary-badge generating';
+            
+            // Show loading in summary sections
+            const loadingHtml = '<div class="summary-loading"><div class="spinner"></div>Generating summary...</div>';
+            
+            document.getElementById('summary-text').innerHTML = loadingHtml;
+            document.getElementById('action-items').innerHTML = loadingHtml;
+            document.getElementById('questions').innerHTML = loadingHtml;
+            document.getElementById('next-steps').innerHTML = loadingHtml;
+        }
+
+        function loadExistingSummary(sessionData) {
+            // Load existing summary if available
+            if (sessionData.meeting_summary && sessionData.meeting_summary.summary) {
+                updateMeetingSummary(sessionData.meeting_summary, sessionData.meeting_summary.lastUpdated);
+            } else {
+                // Show the summary section but with placeholders
+                const summarySection = document.getElementById('meeting-summary-section');
+                summarySection.style.display = 'block';
             }
         }
     </script>

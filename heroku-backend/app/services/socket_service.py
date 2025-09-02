@@ -127,6 +127,17 @@ def register_socket_events(socketio):
                 if 'transcripts' not in active_sessions[session_id]:
                     active_sessions[session_id]['transcripts'] = []
                 
+                # Initialize meeting summary data if it doesn't exist
+                if 'meeting_summary' not in active_sessions[session_id]:
+                    active_sessions[session_id]['meeting_summary'] = {
+                        'summary': '',
+                        'actionItems': [],
+                        'questions': [],
+                        'nextSteps': [],
+                        'lastUpdated': None,
+                        'finalTranscriptCount': 0
+                    }
+                
                 # Create transcript entry
                 transcript_entry = {
                     'transcript': transcript,
@@ -146,6 +157,17 @@ def register_socket_events(socketio):
                     # Count words in final transcripts only
                     word_count = sum(len(t['transcript'].split()) for t in active_sessions[session_id]['transcripts'] if t.get('is_final', False))
                     active_sessions[session_id]['word_count'] = word_count
+                    
+                    # Update final transcript count for meeting summary
+                    active_sessions[session_id]['meeting_summary']['finalTranscriptCount'] += 1
+                    
+                    # Check if we should generate/update meeting summary (adaptive frequency)
+                    final_count = active_sessions[session_id]['meeting_summary']['finalTranscriptCount']
+                    should_update = _should_update_summary(active_sessions[session_id], final_count)
+                    
+                    if should_update:
+                        logger.info("Triggering meeting summary update", session_id=session_id, final_transcript_count=final_count)
+                        _generate_meeting_summary_async(session_id, active_sessions[session_id], socketio)
                 
                 logger.info("Transcript stored", session_id=session_id, total_transcripts=active_sessions[session_id]['transcript_count'])
             
@@ -395,3 +417,121 @@ def register_socket_events(socketio):
 # Import required modules for the socket service
 import datetime
 from flask import request
+import threading
+
+def _generate_meeting_summary_async(session_id, session_data, socketio):
+    """Generate meeting summary asynchronously to avoid blocking WebSocket"""
+    def generate_summary():
+        try:
+            from .salesforce_models_service import salesforce_models_service
+            from .. import sessions as active_sessions
+            
+            logger.info("Starting meeting summary generation", session_id=session_id)
+            
+            # Get the last 5 final transcripts
+            final_transcripts = [
+                t['transcript'] for t in session_data['transcripts'] 
+                if t.get('is_final', False)
+            ]
+            
+            # Take the last 5 final transcripts
+            new_transcripts = final_transcripts[-5:] if len(final_transcripts) >= 5 else final_transcripts
+            
+            if not new_transcripts:
+                logger.warning("No final transcripts available for summary", session_id=session_id)
+                return
+            
+            # Get previous summary if it exists
+            previous_summary = session_data.get('meeting_summary')
+            if previous_summary and not previous_summary.get('summary'):
+                previous_summary = None  # Don't use empty summary as context
+            
+            # Generate summary using Salesforce Models API
+            updated_summary = salesforce_models_service.generate_meeting_summary(
+                conversation_history=[],  # We'll build this from transcripts if needed
+                new_transcripts=new_transcripts,
+                previous_summary=previous_summary
+            )
+            
+            if updated_summary:
+                # Update session data
+                if session_id in active_sessions:
+                    active_sessions[session_id]['meeting_summary'].update(updated_summary)
+                    active_sessions[session_id]['meeting_summary']['lastUpdated'] = datetime.datetime.utcnow().isoformat()
+                    
+                    logger.info("Meeting summary updated successfully", session_id=session_id)
+                    
+                    # Broadcast summary update to all clients in the session room
+                    socketio.emit('meeting_summary_update', {
+                        'session_id': session_id,
+                        'summary': updated_summary,
+                        'timestamp': datetime.datetime.utcnow().isoformat()
+                    }, room=session_id)
+                else:
+                    logger.warning("Session not found when updating summary", session_id=session_id)
+            else:
+                logger.error("Failed to generate meeting summary", session_id=session_id)
+                
+        except Exception as e:
+            logger.error("Error generating meeting summary", error=str(e), session_id=session_id)
+    
+    # Run in background thread to avoid blocking WebSocket
+    thread = threading.Thread(target=generate_summary)
+    thread.daemon = True
+    thread.start()
+
+def _should_update_summary(session_data, final_count):
+    """
+    Determine if we should update the meeting summary based on adaptive frequency
+    
+    Adaptive frequency for long meetings:
+    - First 30 minutes: Every 5 final transcripts (high engagement)
+    - 30-60 minutes: Every 10 final transcripts 
+    - 60+ minutes: Every 15 final transcripts (cost optimization)
+    """
+    if final_count < 5:
+        return False  # Need at least 5 transcripts for first summary
+    
+    # Calculate meeting duration if available
+    meeting_duration_minutes = 0
+    if session_data.get('started_at'):
+        try:
+            start_time = datetime.datetime.fromisoformat(session_data['started_at'])
+            current_time = datetime.datetime.utcnow()
+            meeting_duration_minutes = (current_time - start_time).total_seconds() / 60
+        except:
+            pass
+    
+    # Determine frequency based on duration
+    if meeting_duration_minutes <= 30:
+        # First 30 minutes: Every 5 transcripts
+        frequency = 5
+    elif meeting_duration_minutes <= 60:
+        # 30-60 minutes: Every 10 transcripts
+        frequency = 10
+    else:
+        # 60+ minutes: Every 15 transcripts
+        frequency = 15
+    
+    # Check if we should update
+    should_update = final_count % frequency == 0
+    
+    if should_update:
+        logger.info("Summary update triggered", 
+                   final_count=final_count, 
+                   frequency=frequency, 
+                   duration_minutes=meeting_duration_minutes)
+    
+    return should_update
+
+def _get_meeting_duration_minutes(session_data):
+    """Calculate meeting duration in minutes"""
+    if not session_data.get('started_at'):
+        return 0
+    
+    try:
+        start_time = datetime.datetime.fromisoformat(session_data['started_at'])
+        current_time = datetime.datetime.utcnow()
+        return (current_time - start_time).total_seconds() / 60
+    except:
+        return 0
