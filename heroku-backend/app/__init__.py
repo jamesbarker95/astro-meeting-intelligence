@@ -66,6 +66,10 @@ def create_app():
     def session_processing():
         return render_template('session_processing.html')
     
+    @app.route('/live-sessions/<session_id>')
+    def live_session_detail(session_id):
+        return render_template('live_session_detail.html', session_id=session_id)
+    
     @app.route('/config', methods=['POST'])
     def save_config():
         try:

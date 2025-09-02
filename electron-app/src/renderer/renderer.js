@@ -1399,6 +1399,9 @@ function setupAudioLevelIndicator() {
 
 // ===== SALESFORCE EVENTS FUNCTIONALITY =====
 
+// Store loaded events for context access
+let loadedEvents = [];
+
 async function loadUserEvents() {
     console.log('Loading user events from Salesforce...');
     
@@ -1520,9 +1523,6 @@ function showEventsError() {
 // Store active event sessions
 const activeEventSessions = new Map();
 
-// Store loaded events for context access
-let loadedEvents = [];
-
 async function handleIndividualEventClick(event) {
     const button = event.target;
     const eventId = button.getAttribute('data-event-id');
@@ -1547,6 +1547,18 @@ async function handleIndividualEventClick(event) {
             throw new Error('Failed to connect to WebSocket: ' + wsResult.error);
         }
         
+        // Get event context data from the event object
+        const eventData = getEventDataById(eventId);
+        console.log('📋 Event context data:', {
+            eventId,
+            hasMeetingBrief: !!(eventData?.Meeting_Brief),
+            hasCompetitiveIntelligence: !!(eventData?.Competitive_Intelligence),
+            hasAgentCapabilities: !!(eventData?.Agent_Capabilities),
+            meetingBriefLength: eventData?.Meeting_Brief?.length || 0,
+            competitiveIntelligenceLength: eventData?.Competitive_Intelligence?.length || 0,
+            agentCapabilitiesLength: eventData?.Agent_Capabilities?.length || 0
+        });
+
         // Create session with event metadata
         console.log('Creating session with event metadata...');
         const contextData = {
@@ -1574,18 +1586,6 @@ async function handleIndividualEventClick(event) {
         
         const sessionId = sessionResult.sessionId;
         console.log('Session created with ID:', sessionId);
-        
-        // Get event context data from the event object
-        const eventData = getEventDataById(eventId);
-        console.log('📋 Event context data:', {
-            eventId,
-            hasMeetingBrief: !!(eventData?.Meeting_Brief),
-            hasCompetitiveIntelligence: !!(eventData?.Competitive_Intelligence),
-            hasAgentCapabilities: !!(eventData?.Agent_Capabilities),
-            meetingBriefLength: eventData?.Meeting_Brief?.length || 0,
-            competitiveIntelligenceLength: eventData?.Competitive_Intelligence?.length || 0,
-            agentCapabilitiesLength: eventData?.Agent_Capabilities?.length || 0
-        });
         
         // Store session info with context
         activeEventSessions.set(eventId, {
