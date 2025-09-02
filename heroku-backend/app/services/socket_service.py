@@ -1,4 +1,5 @@
-from flask_socketio import emit, join_room, leave_room, request
+from flask_socketio import emit, join_room, leave_room
+from flask import request
 import logging
 import datetime
 from structlog import get_logger
