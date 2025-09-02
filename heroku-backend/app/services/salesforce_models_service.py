@@ -36,9 +36,7 @@ class SalesforceModelsService:
         
     def _get_token_url(self) -> str:
         """Get the OAuth token endpoint URL"""
-        # Use IP address to bypass potential DNS issues in web dyno
-        # 136.146.17.118 resolves to storm-65b5252966fd52.my.salesforce.com
-        return "https://136.146.17.118/services/oauth2/token"
+        return f"https://{self.domain}/services/oauth2/token"
     
     def _is_token_valid(self) -> bool:
         """Check if current token is valid and not expiring soon"""
@@ -62,12 +60,20 @@ class SalesforceModelsService:
             }
             
             # Set Content-Type header to match curl -d behavior
-            # Add Host header when using IP address to avoid SSL issues
-            headers = {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Host': self.domain
-            }
-            response = requests.post(token_url, data=data, headers=headers, timeout=60)
+            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+            
+            # Retry logic for DNS/network issues in web dyno
+            for attempt in range(self.max_retries):
+                try:
+                    response = requests.post(token_url, data=data, headers=headers, timeout=60)
+                    break  # Success, exit retry loop
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                    if attempt < self.max_retries - 1:
+                        wait_time = self.retry_delay_seconds * (2 ** attempt)  # Exponential backoff
+                        logger.warning(f"🔄 Attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+                        time.sleep(wait_time)
+                    else:
+                        raise  # Last attempt failed, re-raise the exception
             response.raise_for_status()
             
             token_data = response.json()
