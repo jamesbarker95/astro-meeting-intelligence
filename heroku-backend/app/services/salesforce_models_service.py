@@ -36,7 +36,9 @@ class SalesforceModelsService:
         
     def _get_token_url(self) -> str:
         """Get the OAuth token endpoint URL"""
-        return f"https://{self.domain}/services/oauth2/token"
+        # Use IP address to bypass potential DNS issues in web dyno
+        # 136.146.17.118 resolves to storm-65b5252966fd52.my.salesforce.com
+        return "https://136.146.17.118/services/oauth2/token"
     
     def _is_token_valid(self) -> bool:
         """Check if current token is valid and not expiring soon"""
@@ -60,7 +62,11 @@ class SalesforceModelsService:
             }
             
             # Set Content-Type header to match curl -d behavior
-            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+            # Add Host header when using IP address to avoid SSL issues
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Host': self.domain
+            }
             response = requests.post(token_url, data=data, headers=headers, timeout=60)
             response.raise_for_status()
             
@@ -78,6 +84,9 @@ class SalesforceModelsService:
             
         except requests.exceptions.RequestException as e:
             logger.error(f"❌ Failed to generate JWT token: {e}")
+            logger.error(f"🔍 Request details - URL: {token_url}")
+            logger.error(f"🔍 Headers: {headers}")
+            logger.error(f"🔍 Data keys: {list(data.keys())}")
             return False
         except Exception as e:
             logger.error(f"❌ Unexpected error generating JWT token: {e}")
