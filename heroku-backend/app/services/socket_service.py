@@ -113,7 +113,7 @@ def register_socket_events(socketio):
             transcript = data.get('transcript')
             speaker = data.get('speaker', 'unknown')
             confidence = data.get('confidence', 0.0)
-            is_final = data.get('isFinal', False)
+            is_final = data.get('is_final', False)
             
             if not session_id or not transcript:
                 emit('error', {'message': 'Session ID and transcript required'})
