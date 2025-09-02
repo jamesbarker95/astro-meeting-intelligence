@@ -65,7 +65,11 @@ def create_session():
             'word_count': 0,
             'insights_generated': 0,
             'debug_logs': [],
-            'transcripts': []
+            'transcripts': [],
+            # Context fields from Salesforce events
+            'meeting_brief': data.get('meeting_brief', ''),
+            'competitive_intelligence': data.get('competitive_intelligence', ''),
+            'agent_capabilities': data.get('agent_capabilities', '')
         }
         
         active_sessions[session_id] = session_data

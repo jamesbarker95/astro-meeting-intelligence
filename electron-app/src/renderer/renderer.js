@@ -1121,8 +1121,16 @@ async function checkAuthStatus() {
             // Hide auth buttons
             const authSection = document.querySelector('.auth-section');
             const readySection = document.querySelector('.ready-section');
+            const eventsSection = document.getElementById('events-section');
             if (authSection) authSection.style.display = 'none';
             if (readySection) readySection.style.display = 'block';
+            if (eventsSection) {
+                eventsSection.style.display = 'block';
+                eventsSection.classList.remove('hidden');
+            }
+            
+            // Load user events from Salesforce
+            loadUserEvents();
             
         } else {
             console.log('Showing auth buttons and hiding ready section');
@@ -1250,6 +1258,55 @@ function addTranscriptLine(data) {
     if (transcriptContainer) {
         transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
     }
+    
+    // Also update individual event transcripts
+    updateEventTranscripts({ text, isFinal, confidence, timestamp });
+}
+
+function updateEventTranscripts(transcript) {
+    // Update all active event session transcripts
+    activeEventSessions.forEach((sessionInfo, eventId) => {
+        const eventTranscriptContent = document.getElementById(`event-transcript-content-${eventId}`);
+        if (eventTranscriptContent) {
+            // Store transcript line
+            sessionInfo.transcriptLines.push(transcript);
+            
+            // Create transcript line element
+            const transcriptLine = document.createElement('div');
+            transcriptLine.style.marginBottom = '3px';
+            transcriptLine.style.padding = '2px 0';
+            transcriptLine.style.fontSize = '11px';
+            
+            // Color code based on is_final
+            if (transcript.isFinal) {
+                transcriptLine.style.color = '#212529';
+                transcriptLine.style.fontWeight = '500';
+            } else {
+                transcriptLine.style.color = '#6c757d';
+                transcriptLine.style.fontStyle = 'italic';
+            }
+            
+            const timestamp = transcript.timestamp || new Date().toLocaleTimeString();
+            transcriptLine.innerHTML = `<span style="color: #007bff; font-size: 10px;">[${timestamp}]</span> ${transcript.text}`;
+            
+            eventTranscriptContent.appendChild(transcriptLine);
+            
+            // Auto-scroll to bottom
+            const eventTranscriptDiv = document.getElementById(`event-transcript-${eventId}`);
+            if (eventTranscriptDiv) {
+                eventTranscriptDiv.scrollTop = eventTranscriptDiv.scrollHeight;
+            }
+            
+            // Limit transcript lines to prevent memory issues
+            if (sessionInfo.transcriptLines.length > 50) {
+                sessionInfo.transcriptLines.shift();
+                const firstChild = eventTranscriptContent.firstChild;
+                if (firstChild) {
+                    eventTranscriptContent.removeChild(firstChild);
+                }
+            }
+        }
+    });
 }
 
 function setupAudioLevelIndicator() {
@@ -1338,4 +1395,269 @@ function setupAudioLevelIndicator() {
     
     // Start the monitoring loop
     requestAnimationFrame(updateLevels);
+}
+
+// ===== SALESFORCE EVENTS FUNCTIONALITY =====
+
+async function loadUserEvents() {
+    console.log('Loading user events from Salesforce...');
+    
+    const eventsLoading = document.getElementById('events-loading');
+    const eventsContainer = document.getElementById('events-container');
+    const eventsError = document.getElementById('events-error');
+    
+    // Show loading state
+    if (eventsLoading) eventsLoading.style.display = 'flex';
+    if (eventsContainer) eventsContainer.style.display = 'none';
+    if (eventsError) eventsError.style.display = 'none';
+    
+    try {
+        const result = await window.electronAPI.getUserEvents();
+        console.log('User events result:', result);
+        console.log('Result success:', result.success);
+        console.log('Result events:', result.events);
+        console.log('Result error:', result.error);
+        
+        if (result.success && result.events && result.events.length > 0) {
+            console.log(`Found ${result.events.length} events, displaying them`);
+            displayEvents(result.events);
+        } else {
+            console.log('No events found or error occurred. Success:', result.success, 'Error:', result.error);
+            showEventsError();
+        }
+        
+    } catch (error) {
+        console.error('Error loading user events:', error);
+        showEventsError();
+    }
+}
+
+function displayEvents(events) {
+    console.log(`Displaying ${events.length} events`);
+    
+    // Store events globally for context access
+    loadedEvents = events;
+    
+    const eventsLoading = document.getElementById('events-loading');
+    const eventsContainer = document.getElementById('events-container');
+    const eventsError = document.getElementById('events-error');
+    
+    // Hide loading, show container
+    if (eventsLoading) eventsLoading.style.display = 'none';
+    if (eventsContainer) eventsContainer.style.display = 'flex';
+    if (eventsError) eventsError.style.display = 'none';
+    
+    // Clear existing events
+    eventsContainer.innerHTML = '';
+    
+    // Create event items
+    events.forEach(event => {
+        const eventElement = createEventElement(event);
+        eventsContainer.appendChild(eventElement);
+    });
+}
+
+function getEventDataById(eventId) {
+    return loadedEvents.find(event => event.Event_Id === eventId);
+}
+
+function createEventElement(event) {
+    const eventDiv = document.createElement('div');
+    eventDiv.className = 'event-item';
+    
+    // Format time display
+    const timeDisplay = formatEventTime(event.Start, event.End);
+    
+    eventDiv.innerHTML = `
+        <div class="event-title">${escapeHtml(event.Title)}</div>
+        ${timeDisplay ? `<div class="event-time">${timeDisplay}</div>` : ''}
+        <div class="event-description">${escapeHtml(event.Description || 'No description')}</div>
+        <div class="event-actions">
+            <button class="btn-event" data-event-id="${event.Event_Id}" data-related-to-id="${event.RelatedToId}" data-event-title="${escapeHtml(event.Title)}">
+                Individual
+            </button>
+        </div>
+        <div class="event-session-container" style="display: none;">
+            <!-- Session content will be added here when Individual is clicked -->
+        </div>
+    `;
+    
+    // Add secure event listener
+    const button = eventDiv.querySelector('.btn-event');
+    button.addEventListener('click', handleIndividualEventClick);
+    
+    return eventDiv;
+}
+
+function formatEventTime(start, end) {
+    if (!start && !end) return '';
+    
+    try {
+        let timeStr = '';
+        if (start) {
+            timeStr += `🕐 ${start}`;
+        }
+        if (end) {
+            timeStr += start ? ` - ${end}` : `🕐 Until ${end}`;
+        }
+        return timeStr;
+    } catch (error) {
+        console.error('Error formatting event time:', error);
+        return '';
+    }
+}
+
+function showEventsError() {
+    const eventsLoading = document.getElementById('events-loading');
+    const eventsContainer = document.getElementById('events-container');
+    const eventsError = document.getElementById('events-error');
+    
+    if (eventsLoading) eventsLoading.style.display = 'none';
+    if (eventsContainer) eventsContainer.style.display = 'none';
+    if (eventsError) eventsError.style.display = 'block';
+}
+
+// Store active event sessions
+const activeEventSessions = new Map();
+
+// Store loaded events for context access
+let loadedEvents = [];
+
+async function handleIndividualEventClick(event) {
+    const button = event.target;
+    const eventId = button.getAttribute('data-event-id');
+    const relatedToId = button.getAttribute('data-related-to-id');
+    const eventTitle = button.getAttribute('data-event-title');
+    
+    console.log(`Starting individual session for event: ${eventTitle} (${eventId})`);
+    
+    try {
+        // Disable button and change text
+        button.disabled = true;
+        button.textContent = 'Starting...';
+        
+        // Get the session container for this event
+        const eventItem = button.closest('.event-item');
+        const sessionContainer = eventItem.querySelector('.event-session-container');
+        
+        // Connect to WebSocket first (following main session pattern)
+        console.log('Connecting to WebSocket...');
+        const wsResult = await window.electronAPI.connectWebSocket();
+        if (!wsResult.success) {
+            throw new Error('Failed to connect to WebSocket: ' + wsResult.error);
+        }
+        
+        // Create session with event metadata
+        console.log('Creating session with event metadata...');
+        const contextData = {
+            eventId: eventId,
+            relatedToId: relatedToId,
+            eventTitle: eventTitle,
+            meetingBrief: eventData?.Meeting_Brief || '',
+            competitiveIntelligence: eventData?.Competitive_Intelligence || '',
+            agentCapabilities: eventData?.Agent_Capabilities || ''
+        };
+        
+        console.log('📋 Sending context data to Heroku:', {
+            eventId,
+            relatedToId,
+            eventTitle,
+            hasMeetingBrief: !!(contextData.meetingBrief),
+            hasCompetitiveIntelligence: !!(contextData.competitiveIntelligence),
+            hasAgentCapabilities: !!(contextData.agentCapabilities)
+        });
+        
+        const sessionResult = await window.electronAPI.createSession(contextData);
+        if (!sessionResult.success) {
+            throw new Error('Failed to create session');
+        }
+        
+        const sessionId = sessionResult.sessionId;
+        console.log('Session created with ID:', sessionId);
+        
+        // Get event context data from the event object
+        const eventData = getEventDataById(eventId);
+        console.log('📋 Event context data:', {
+            eventId,
+            hasMeetingBrief: !!(eventData?.Meeting_Brief),
+            hasCompetitiveIntelligence: !!(eventData?.Competitive_Intelligence),
+            hasAgentCapabilities: !!(eventData?.Agent_Capabilities),
+            meetingBriefLength: eventData?.Meeting_Brief?.length || 0,
+            competitiveIntelligenceLength: eventData?.Competitive_Intelligence?.length || 0,
+            agentCapabilitiesLength: eventData?.Agent_Capabilities?.length || 0
+        });
+        
+        // Store session info with context
+        activeEventSessions.set(eventId, {
+            sessionId: sessionId,
+            eventId: eventId,
+            relatedToId: relatedToId,
+            eventTitle: eventTitle,
+            meetingBrief: eventData?.Meeting_Brief || '',
+            competitiveIntelligence: eventData?.Competitive_Intelligence || '',
+            agentCapabilities: eventData?.Agent_Capabilities || '',
+            transcriptLines: []
+        });
+        
+        // Show session container with status
+        sessionContainer.style.display = 'block';
+        sessionContainer.innerHTML = `
+            <div class="event-session-status">🎙️ Recording Session: ${escapeHtml(eventTitle)}</div>
+            <div class="event-transcript" id="event-transcript-${eventId}">
+                <div style="color: #6c757d; font-style: italic;">Starting audio capture and transcription...</div>
+            </div>
+        `;
+        
+        // Auto-start the session and audio capture
+        console.log('Auto-starting session and audio capture...');
+        const startResult = await window.electronAPI.startSession(sessionId);
+        if (!startResult.success) {
+            throw new Error('Failed to start session');
+        }
+        
+        // Start audio capture
+        const audioResult = await window.electronAPI.startAudioCapture();
+        if (!audioResult.success) {
+            throw new Error('Failed to start audio capture');
+        }
+        
+        // Update button state
+        button.textContent = 'Recording...';
+        button.style.background = '#dc3545';
+        
+        // Update transcript container
+        const transcriptDiv = document.getElementById(`event-transcript-${eventId}`);
+        transcriptDiv.innerHTML = `
+            <div style="color: #28a745; font-weight: 600;">🔴 Live Recording</div>
+            <div style="color: #6c757d; font-size: 11px; margin-top: 5px;">Session ID: ${sessionId.session_id || sessionId}</div>
+            <div id="event-transcript-content-${eventId}" style="margin-top: 10px;">
+                <!-- Transcript lines will appear here -->
+            </div>
+        `;
+        
+        console.log(`✅ Individual session started for event: ${eventTitle}`);
+        
+    } catch (error) {
+        console.error('Error starting individual event session:', error);
+        
+        // Reset button state
+        button.disabled = false;
+        button.textContent = 'Individual';
+        button.style.background = '';
+        
+        // Show error in session container
+        const eventItem = button.closest('.event-item');
+        const sessionContainer = eventItem.querySelector('.event-session-container');
+        sessionContainer.style.display = 'block';
+        sessionContainer.innerHTML = `
+            <div style="color: #dc3545; font-weight: 600;">❌ Error: ${error.message}</div>
+            <div style="color: #6c757d; font-size: 12px; margin-top: 5px;">Click Individual to try again</div>
+        `;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }

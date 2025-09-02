@@ -159,7 +159,7 @@ export class WebSocketManager {
     });
   }
 
-  public createSession(): Promise<SessionData> {
+  public createSession(contextData?: any): Promise<SessionData> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.isConnected) {
         console.error('WebSocketManager: Cannot create session - WebSocket not connected');
@@ -205,7 +205,22 @@ export class WebSocketManager {
       };
       this.socket.on('session_created', handleSessionCreated);
       console.log('WebSocketManager: Emitting create_session event...');
-      this.socket.emit('create_session', {});
+      
+      // Prepare session data with context if provided
+      const sessionData = {
+        type: contextData ? 'event' : 'manual',
+        meeting_brief: contextData?.meetingBrief || '',
+        competitive_intelligence: contextData?.competitiveIntelligence || '',
+        agent_capabilities: contextData?.agentCapabilities || '',
+        meeting_info: contextData ? {
+          event_id: contextData.eventId,
+          related_to_id: contextData.relatedToId,
+          event_title: contextData.eventTitle
+        } : {}
+      };
+      
+      console.log('WebSocketManager: Session data:', sessionData);
+      this.socket.emit('create_session', sessionData);
     });
   }
 

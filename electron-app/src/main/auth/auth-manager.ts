@@ -37,6 +37,18 @@ interface SlackTokens {
   };
 }
 
+interface SalesforceEvent {
+  Event_Id: string;
+  Title: string;
+  Start: string;
+  End: string;
+  Description: string;
+  RelatedToId: string;
+  Meeting_Brief: string;
+  Competitive_Intelligence: string;
+  Agent_Capabilities: string;
+}
+
 interface AuthSettings {
   salesforce_client_id: string;
   salesforce_client_secret: string;
@@ -452,6 +464,293 @@ export class AuthManager {
     } catch (error) {
       console.error('Error retrieving stored tokens:', error);
       return { salesforce: null, slack: null };
+    }
+  }
+
+  /**
+   * Extract User ID from Salesforce identity URL
+   * Example: https://login.salesforce.com/id/00D000000000000EAA/005000000000000AAA
+   * Returns: 005000000000000AAA (User ID)
+   */
+  public extractSalesforceUserId(identityUrl: string): string | null {
+    try {
+      const urlParts = identityUrl.split('/');
+      // The User ID is the last part of the identity URL
+      const userId = urlParts[urlParts.length - 1];
+      
+      // Validate it looks like a Salesforce User ID (starts with 005 and is 15 or 18 chars)
+      if (userId && (userId.startsWith('005')) && (userId.length === 15 || userId.length === 18)) {
+        console.log('Extracted Salesforce User ID:', userId);
+        return userId;
+      }
+      
+      console.error('Invalid Salesforce User ID format:', userId);
+      return null;
+    } catch (error) {
+      console.error('Error extracting Salesforce User ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Call Salesforce flow to get user events
+   * Uses the Astro_Get_User_Events flow with User_Id input
+   */
+  public async getUserEvents(): Promise<SalesforceEvent[]> {
+    try {
+      const tokens = await this.getStoredTokens();
+      if (!tokens.salesforce) {
+        console.error('No Salesforce tokens available');
+        return [];
+      }
+
+      // Extract User ID from the identity URL
+      console.log('Raw Salesforce identity URL:', tokens.salesforce.id);
+      const userId = this.extractSalesforceUserId(tokens.salesforce.id);
+      if (!userId) {
+        console.error('Could not extract User ID from Salesforce tokens');
+        console.error('Identity URL was:', tokens.salesforce.id);
+        return [];
+      }
+
+      console.log('✅ Extracted User ID:', userId);
+      console.log('🚀 Calling Salesforce flow with User ID:', userId);
+
+      // Call the Salesforce flow
+      const flowUrl = `${tokens.salesforce.instance_url}/services/data/v61.0/actions/custom/flow/Astro_Get_User_Events`;
+      const requestBody = {
+        inputs: [{
+          User_Id: userId
+        }]
+      };
+      
+      console.log('📡 Flow URL:', flowUrl);
+      console.log('📦 Request body:', JSON.stringify(requestBody, null, 2));
+      
+      const response = await fetch(flowUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tokens.salesforce.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        console.error('Salesforce flow call failed:', response.status, response.statusText);
+        return [];
+      }
+
+      const flowResult = await response.json() as any[];
+      console.log('Salesforce flow result:', flowResult);
+
+      // Parse the flow output
+      if (Array.isArray(flowResult) && flowResult.length > 0 && flowResult[0]?.outputValues) {
+        const userEvents = flowResult[0].outputValues.User_Events;
+        console.log('📋 User_Events type:', typeof userEvents);
+        console.log('📋 User_Events value:', userEvents);
+        
+        if (userEvents) {
+          // Handle both Array and String formats
+          if (Array.isArray(userEvents)) {
+            console.log('✅ User_Events is an Array, processing directly');
+            return this.parseUserEventsArray(userEvents);
+          } else if (typeof userEvents === 'string') {
+            console.log('✅ User_Events is a String, parsing');
+            return this.parseUserEventsString(userEvents);
+          } else {
+            console.error('❌ Unexpected User_Events format:', typeof userEvents);
+          }
+        }
+      }
+
+      console.log('No events returned from Salesforce flow');
+      return [];
+
+    } catch (error) {
+      console.error('Error getting user events from Salesforce:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse the User_Events array from Salesforce flow into structured data
+   */
+  private parseUserEventsArray(eventsArray: any[]): SalesforceEvent[] {
+    try {
+      const events: SalesforceEvent[] = [];
+      
+      console.log(`📋 Processing ${eventsArray.length} events from array`);
+      
+      for (const eventItem of eventsArray) {
+        console.log('📋 Processing event item:', eventItem);
+        
+        if (typeof eventItem === 'string') {
+          // Parse string format: "Event_Id: ...\nTitle: ...\nDescription: ...\nRelatedToId: ..."
+          console.log('📋 Parsing string format event');
+          const event = this.parseEventString(eventItem);
+          if (event) {
+            console.log('✅ Parsed event from string:', event);
+            events.push(event);
+          }
+        } else if (eventItem && typeof eventItem === 'object') {
+          // Handle object format
+          console.log('📋 Parsing object format event');
+          const event: SalesforceEvent = {
+            Event_Id: eventItem.Event_Id || eventItem.Id || eventItem.id || 'unknown',
+            Title: eventItem.Title || eventItem.Subject || eventItem.title || 'Untitled Event',
+            Start: eventItem.Start || eventItem.StartDateTime || eventItem.start || '',
+            End: eventItem.End || eventItem.EndDateTime || eventItem.end || '',
+            Description: eventItem.Description || eventItem.description || '',
+            RelatedToId: eventItem.RelatedToId || eventItem.WhatId || eventItem.relatedToId || '',
+            Meeting_Brief: eventItem.Meeting_Brief || eventItem['Meeting Brief'] || '',
+            Competitive_Intelligence: eventItem.Competitive_Intelligence || eventItem['Competitive Insights'] || '',
+            Agent_Capabilities: eventItem.Agent_Capabilities || eventItem['Agent Capabilities'] || ''
+          };
+          
+          console.log('✅ Parsed event from object:', event);
+          events.push(event);
+        } else {
+          console.log('⚠️ Skipping unknown event format:', typeof eventItem);
+        }
+      }
+      
+      console.log(`✅ Successfully parsed ${events.length} events from array`);
+      return events;
+      
+    } catch (error) {
+      console.error('Error parsing user events array:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse a single event string into a SalesforceEvent object
+   */
+  private parseEventString(eventStr: string): SalesforceEvent | null {
+    try {
+      const lines = eventStr.split('\n');
+      const event: Partial<SalesforceEvent> = {};
+      
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (trimmedLine.startsWith('Event_Id:')) {
+          event.Event_Id = trimmedLine.replace('Event_Id:', '').trim();
+        } else if (trimmedLine.startsWith('Title:')) {
+          event.Title = trimmedLine.replace('Title:', '').trim();
+        } else if (trimmedLine.startsWith('Start:')) {
+          event.Start = trimmedLine.replace('Start:', '').trim();
+        } else if (trimmedLine.startsWith('End:')) {
+          event.End = trimmedLine.replace('End:', '').trim();
+        } else if (trimmedLine.startsWith('Description:')) {
+          // Handle multi-line descriptions
+          const descStart = eventStr.indexOf('Description:');
+          const relatedStart = eventStr.indexOf('RelatedToId:');
+          if (descStart !== -1 && relatedStart !== -1) {
+            event.Description = eventStr.substring(descStart + 12, relatedStart).trim();
+          } else if (descStart !== -1) {
+            event.Description = eventStr.substring(descStart + 12).trim();
+          }
+        } else if (trimmedLine.startsWith('RelatedToId:')) {
+          event.RelatedToId = trimmedLine.replace('RelatedToId:', '').trim();
+        } else if (trimmedLine.startsWith('Meeting Brief:')) {
+          // Handle multi-line Meeting Brief
+          const briefStart = eventStr.indexOf('Meeting Brief:');
+          const competitiveStart = eventStr.indexOf('Competitive Insights:');
+          if (briefStart !== -1 && competitiveStart !== -1) {
+            event.Meeting_Brief = eventStr.substring(briefStart + 14, competitiveStart).trim();
+          } else if (briefStart !== -1) {
+            event.Meeting_Brief = eventStr.substring(briefStart + 14).trim();
+          }
+        } else if (trimmedLine.startsWith('Competitive Insights:')) {
+          // Handle multi-line Competitive Insights
+          const competitiveStart = eventStr.indexOf('Competitive Insights:');
+          const agentStart = eventStr.indexOf('Agent Capabilities:');
+          if (competitiveStart !== -1 && agentStart !== -1) {
+            event.Competitive_Intelligence = eventStr.substring(competitiveStart + 21, agentStart).trim();
+          } else if (competitiveStart !== -1) {
+            event.Competitive_Intelligence = eventStr.substring(competitiveStart + 21).trim();
+          }
+        } else if (trimmedLine.startsWith('Agent Capabilities:')) {
+          // Handle multi-line Agent Capabilities (usually at the end)
+          const agentStart = eventStr.indexOf('Agent Capabilities:');
+          if (agentStart !== -1) {
+            event.Agent_Capabilities = eventStr.substring(agentStart + 19).trim();
+          }
+        }
+      }
+      
+      // Validate required fields
+      if (event.Event_Id && event.Title && event.RelatedToId) {
+        return {
+          Event_Id: event.Event_Id,
+          Title: event.Title,
+          Start: event.Start || '',
+          End: event.End || '',
+          Description: event.Description || '',
+          RelatedToId: event.RelatedToId,
+          Meeting_Brief: event.Meeting_Brief || '',
+          Competitive_Intelligence: event.Competitive_Intelligence || '',
+          Agent_Capabilities: event.Agent_Capabilities || ''
+        };
+      }
+      
+      console.log('⚠️ Missing required fields in event:', event);
+      return null;
+      
+    } catch (error) {
+      console.error('Error parsing event string:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Parse the User_Events string from Salesforce flow into structured data
+   */
+  private parseUserEventsString(eventsString: string): SalesforceEvent[] {
+    try {
+      const events: SalesforceEvent[] = [];
+      
+      // Split by comma to get individual events
+      const eventStrings = eventsString.split(',Event_Id:');
+      
+      for (let i = 0; i < eventStrings.length; i++) {
+        let eventStr = eventStrings[i];
+        
+        if (!eventStr) continue;
+        
+        // Add back the Event_Id: prefix for all but the first item
+        if (i > 0) {
+          eventStr = 'Event_Id:' + eventStr;
+        }
+        
+        // Extract fields using regex
+        const eventIdMatch = eventStr.match(/Event_Id:\s*([^\s]+)/);
+        const titleMatch = eventStr.match(/Title:\s*([^]+?)(?=\s+Description:|$)/);
+        const descriptionMatch = eventStr.match(/Description:\s*([^]+?)(?=\s+RelatedToId:|$)/);
+        const relatedToIdMatch = eventStr.match(/RelatedToId:\s*([^\s,]+)/);
+        
+        if (eventIdMatch?.[1] && titleMatch?.[1] && relatedToIdMatch?.[1]) {
+          events.push({
+            Event_Id: eventIdMatch[1].trim(),
+            Title: titleMatch[1].trim(),
+            Start: '', // String format doesn't include Start/End in the old parsing
+            End: '',   // String format doesn't include Start/End in the old parsing
+            Description: descriptionMatch?.[1]?.trim() || '',
+            RelatedToId: relatedToIdMatch[1].trim(),
+            Meeting_Brief: '', // Legacy format doesn't include context
+            Competitive_Intelligence: '', // Legacy format doesn't include context
+            Agent_Capabilities: '' // Legacy format doesn't include context
+          });
+        }
+      }
+      
+      console.log(`Parsed ${events.length} events from Salesforce`);
+      return events;
+      
+    } catch (error) {
+      console.error('Error parsing user events string:', error);
+      return [];
     }
   }
 

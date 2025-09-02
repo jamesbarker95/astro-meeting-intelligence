@@ -173,6 +173,17 @@ class MainProcess {
       }
     });
 
+    ipcMain.handle('auth:get-user-events', async () => {
+      try {
+        console.log('Getting user events from Salesforce...');
+        const events = await this.authManager.getUserEvents();
+        return { success: true, events };
+      } catch (error) {
+        console.error('Get user events error:', error);
+        return { success: false, error: (error as Error).message, events: [] };
+      }
+    });
+
     // WebSocket handlers
     ipcMain.handle('websocket:connect', async () => {
       try {
@@ -184,9 +195,10 @@ class MainProcess {
       }
     });
 
-    ipcMain.handle('websocket:create-session', async () => {
+    ipcMain.handle('websocket:create-session', async (_event, contextData) => {
       try {
-        const sessionId = await this.websocketManager.createSession();
+        console.log('Creating session...', contextData ? 'with context' : 'without context');
+        const sessionId = await this.websocketManager.createSession(contextData);
         return { success: true, sessionId };
       } catch (error) {
         console.error('Create session error:', error);

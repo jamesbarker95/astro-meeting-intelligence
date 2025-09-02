@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isWebSocketConnected: () => ipcRenderer.invoke('websocket:is-connected'),
   
   // Session methods
-  createSession: () => ipcRenderer.invoke('websocket:create-session'),
+  createSession: (contextData?: any) => ipcRenderer.invoke('websocket:create-session', contextData),
   startSession: (sessionId?: string) => ipcRenderer.invoke('websocket:start-session', sessionId),
   endSession: (sessionId?: string) => ipcRenderer.invoke('websocket:end-session', sessionId),
   
@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   authenticateSalesforce: () => ipcRenderer.invoke('auth:salesforce'),
   authenticateSlack: () => ipcRenderer.invoke('auth:slack'),
   checkAuthStatus: () => ipcRenderer.invoke('auth:status'),
+  getUserEvents: () => ipcRenderer.invoke('auth:get-user-events'),
   
   // Audio methods
   initializeAudio: () => ipcRenderer.invoke('audio:initialize'),
@@ -94,7 +95,7 @@ declare global {
       isWebSocketConnected: () => Promise<boolean>;
       
       // Session methods
-      createSession: () => Promise<any>;
+      createSession: (contextData?: any) => Promise<any>;
       startSession: (sessionId?: string) => Promise<any>;
       endSession: (sessionId?: string) => Promise<any>;
       
@@ -102,6 +103,7 @@ declare global {
       authenticateSalesforce: () => Promise<any>;
       authenticateSlack: () => Promise<any>;
       checkAuthStatus: () => Promise<any>;
+      getUserEvents: () => Promise<any>;
       
       // Audio methods
       initializeAudio: () => Promise<any>;

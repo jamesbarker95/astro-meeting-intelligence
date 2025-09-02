@@ -309,6 +309,48 @@
             background: #667eea;
             color: white;
         }
+        
+        .context-section {
+            margin-bottom: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .context-bubble {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 12px;
+            padding: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .context-bubble:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+        }
+        
+        .context-label {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .context-content {
+            color: #333;
+            line-height: 1.5;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .context-content:empty::before {
+            content: "No context available";
+            color: #6c757d;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -341,6 +383,22 @@
             <div class="loading">
                 <div class="spinner"></div>
                 Loading session details...
+            </div>
+        </div>
+
+        <!-- Context Bubbles Section -->
+        <div class="context-section" id="context-section" style="display: none;">
+            <div class="context-bubble" id="meeting-brief-bubble">
+                <div class="context-label">💼 Meeting Brief</div>
+                <div class="context-content" id="meeting-brief-content">Loading...</div>
+            </div>
+            <div class="context-bubble" id="competitive-intelligence-bubble">
+                <div class="context-label">🏆 Competitive Intelligence</div>
+                <div class="context-content" id="competitive-intelligence-content">Loading...</div>
+            </div>
+            <div class="context-bubble" id="agent-capabilities-bubble">
+                <div class="context-label">🤖 Agent Capabilities</div>
+                <div class="context-content" id="agent-capabilities-content">Loading...</div>
             </div>
         </div>
 
@@ -486,6 +544,46 @@
                     <div class="info-value">${session.type || 'manual'}</div>
                 </div>
             `;
+            
+            // Render context bubbles if available
+            renderContextBubbles(session);
+        }
+
+        function renderContextBubbles(session) {
+            const contextSection = document.getElementById('context-section');
+            const meetingBriefContent = document.getElementById('meeting-brief-content');
+            const competitiveIntelligenceContent = document.getElementById('competitive-intelligence-content');
+            const agentCapabilitiesContent = document.getElementById('agent-capabilities-content');
+            
+            // Check if any context data exists
+            const hasMeetingBrief = session.meeting_brief && session.meeting_brief.trim();
+            const hasCompetitiveIntelligence = session.competitive_intelligence && session.competitive_intelligence.trim();
+            const hasAgentCapabilities = session.agent_capabilities && session.agent_capabilities.trim();
+            
+            if (hasMeetingBrief || hasCompetitiveIntelligence || hasAgentCapabilities) {
+                // Show context section
+                contextSection.style.display = 'flex';
+                
+                // Populate content
+                meetingBriefContent.textContent = hasMeetingBrief ? session.meeting_brief : '';
+                competitiveIntelligenceContent.textContent = hasCompetitiveIntelligence ? session.competitive_intelligence : '';
+                agentCapabilitiesContent.textContent = hasAgentCapabilities ? session.agent_capabilities : '';
+                
+                // Hide empty bubbles
+                document.getElementById('meeting-brief-bubble').style.display = hasMeetingBrief ? 'block' : 'none';
+                document.getElementById('competitive-intelligence-bubble').style.display = hasCompetitiveIntelligence ? 'block' : 'none';
+                document.getElementById('agent-capabilities-bubble').style.display = hasAgentCapabilities ? 'block' : 'none';
+                
+                console.log('📋 Context bubbles rendered:', {
+                    meetingBrief: hasMeetingBrief ? 'Yes' : 'No',
+                    competitiveIntelligence: hasCompetitiveIntelligence ? 'Yes' : 'No',
+                    agentCapabilities: hasAgentCapabilities ? 'Yes' : 'No'
+                });
+            } else {
+                // Hide context section if no data
+                contextSection.style.display = 'none';
+                console.log('📋 No context data available, hiding context section');
+            }
         }
 
         function connectWebSocket() {
