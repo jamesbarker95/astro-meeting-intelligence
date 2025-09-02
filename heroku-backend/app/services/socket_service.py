@@ -1,5 +1,6 @@
-from flask_socketio import emit, join_room, leave_room
+from flask_socketio import emit, join_room, leave_room, request
 import logging
+import datetime
 from structlog import get_logger
 
 logger = get_logger()
@@ -216,7 +217,7 @@ def register_socket_events(socketio):
     def handle_create_session(data):
         """Handle session creation from WebSocket"""
         try:
-            logger.info("Creating new session via WebSocket", client_id=request.sid)
+            logger.info("Creating new session via WebSocket", client_id=request.sid, data=data)
             
             # Import sessions from main app
             from .. import sessions
@@ -228,11 +229,16 @@ def register_socket_events(socketio):
                 'status': 'created',
                 'created_at': datetime.datetime.utcnow().isoformat(),
                 'client_id': request.sid,
-                'type': 'manual',
+                'type': data.get('type', 'manual'),
                 'transcript_count': 0,
                 'word_count': 0,
                 'debug_logs': [],
-                'transcripts': []
+                'transcripts': [],
+                # Context fields from Salesforce events
+                'meeting_brief': data.get('meeting_brief', ''),
+                'competitive_intelligence': data.get('competitive_intelligence', ''),
+                'agent_capabilities': data.get('agent_capabilities', ''),
+                'meeting_info': data.get('meeting_info', {})
             }
             
             # Store in shared sessions dictionary
