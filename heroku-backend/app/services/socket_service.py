@@ -149,6 +149,29 @@ def register_socket_events(socketio):
                     word_count = sum(len(t['transcript'].split()) for t in active_sessions[session_id]['transcripts'] if t.get('is_final', False))
                     active_sessions[session_id]['word_count'] = word_count
                     
+                    # Initialize meeting summary if needed
+                    if 'meeting_summary' not in active_sessions[session_id]:
+                        active_sessions[session_id]['meeting_summary'] = {
+                            'summary': '',
+                            'actionItems': [],
+                            'questions': [],
+                            'nextSteps': [],
+                            'lastUpdated': None,
+                            'finalTranscriptCount': 0
+                        }
+                    
+                    # Update final transcript count
+                    final_transcripts = [t for t in active_sessions[session_id]['transcripts'] if t.get('is_final', False)]
+                    final_count = len(final_transcripts)
+                    active_sessions[session_id]['meeting_summary']['finalTranscriptCount'] = final_count
+                    
+                    # Check if we should generate meeting summary
+                    from ..api.sessions import _should_update_summary, _generate_meeting_summary_async
+                    if _should_update_summary(active_sessions[session_id], final_count):
+                        logger.info("Triggering meeting summary generation from WebSocket", 
+                                   session_id=session_id, 
+                                   final_count=final_count)
+                        _generate_meeting_summary_async(session_id, active_sessions[session_id])
 
                 
                 logger.info("Transcript stored", session_id=session_id, total_transcripts=active_sessions[session_id]['transcript_count'])
