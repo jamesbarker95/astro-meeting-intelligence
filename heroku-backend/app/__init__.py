@@ -50,6 +50,15 @@ def create_app():
     app.register_blueprint(insights_bp, url_prefix='/api/insights')
     # app.register_blueprint(audio_bp, url_prefix='/api/audio')  # REMOVED
     
+    # Simple test endpoint to verify routing works
+    @app.route('/api/test-simple')
+    def test_simple():
+        return jsonify({
+            "status": "success",
+            "message": "Simple test endpoint working",
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    
     # Test endpoint for Salesforce Models API (inline to avoid import issues)
     @app.route('/api/test-models-simple')
     def test_models_simple():
