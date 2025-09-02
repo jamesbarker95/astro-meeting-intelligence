@@ -3,7 +3,6 @@ Test endpoint for Salesforce Models API connection
 """
 
 from flask import Blueprint, jsonify
-from ..services.salesforce_models_service import salesforce_models_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,27 +15,41 @@ def test_salesforce_connection():
     try:
         logger.info("Testing Salesforce Models API connection...")
         
-        # Test connection
-        success = salesforce_models_service.test_connection()
+        # Import here to avoid startup issues
+        from ..services.salesforce_models_service import salesforce_models_service
         
-        if success:
+        # Test basic configuration first
+        config_test = {
+            "domain": salesforce_models_service.domain,
+            "client_id_present": bool(salesforce_models_service.client_id),
+            "api_base_url": salesforce_models_service.api_base_url
+        }
+        
+        # Try JWT generation
+        jwt_success = salesforce_models_service._generate_jwt()
+        
+        if jwt_success:
             return jsonify({
                 'status': 'success',
                 'message': 'Salesforce Models API connection successful',
+                'config': config_test,
                 'token_valid': salesforce_models_service.access_token is not None,
+                'token_preview': f"{salesforce_models_service.access_token[:30]}..." if salesforce_models_service.access_token else None,
                 'token_expires_at': salesforce_models_service.token_expires_at.isoformat() if salesforce_models_service.token_expires_at else None
             })
         else:
             return jsonify({
                 'status': 'error',
-                'message': 'Salesforce Models API connection failed'
+                'message': 'Salesforce Models API JWT generation failed',
+                'config': config_test
             }), 500
             
     except Exception as e:
         logger.error(f"Error testing Salesforce connection: {e}")
         return jsonify({
             'status': 'error',
-            'message': f'Connection test failed: {str(e)}'
+            'message': f'Connection test failed: {str(e)}',
+            'error_details': str(e)
         }), 500
 
 @test_salesforce_bp.route('/test-summary', methods=['POST'])
@@ -44,6 +57,9 @@ def test_meeting_summary():
     """Test meeting summary generation with sample data"""
     try:
         logger.info("Testing meeting summary generation...")
+        
+        # Import here to avoid startup issues
+        from ..services.salesforce_models_service import salesforce_models_service
         
         # Sample transcript data
         sample_transcripts = [
