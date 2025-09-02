@@ -59,6 +59,11 @@ def create_app():
             "timestamp": datetime.utcnow().isoformat()
         })
     
+    # Even simpler test
+    @app.route('/api/ping')
+    def ping():
+        return "pong"
+    
     # Test endpoint for Salesforce Models API (inline to avoid import issues)
     @app.route('/api/test-models-simple')
     def test_models_simple():
