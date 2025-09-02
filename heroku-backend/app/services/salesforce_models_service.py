@@ -59,7 +59,9 @@ class SalesforceModelsService:
                 'client_secret': self.client_secret
             }
             
-            response = requests.post(token_url, data=data, timeout=60)
+            # Set Content-Type header to match curl -d behavior
+            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+            response = requests.post(token_url, data=data, headers=headers, timeout=60)
             response.raise_for_status()
             
             token_data = response.json()
