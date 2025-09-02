@@ -179,6 +179,56 @@ def create_app():
                 "timestamp": datetime.utcnow().isoformat()
             }), 500
     
+    @app.route('/api/test-models-full')
+    def test_models_full():
+        """Test the full Models API flow with working credentials"""
+        try:
+            # Import here to avoid startup issues
+            from .services.salesforce_models_service import SalesforceModelsService
+            
+            # Create service instance
+            service = SalesforceModelsService()
+            
+            # Test JWT generation
+            jwt_success = service._generate_jwt()
+            if not jwt_success:
+                return jsonify({
+                    "status": "error",
+                    "message": "JWT generation failed",
+                    "timestamp": datetime.utcnow().isoformat()
+                }), 500
+            
+            # Test the full API call
+            test_messages = [
+                {"role": "user", "content": "Hello, this is a test of the Models API"}
+            ]
+            
+            # Use the generate_meeting_summary method with test data
+            result = service.generate_meeting_summary(
+                conversation_history=[],
+                new_transcripts=["Hello, this is a test transcript line"],
+                previous_summary=None
+            )
+            
+            return jsonify({
+                "status": "success",
+                "message": "Full Models API test successful",
+                "config": {
+                    "domain": service.domain,
+                    "model_name": service.model_name,
+                    "api_base_url": service.api_base_url
+                },
+                "result": result,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": f"Full test failed: {str(e)}",
+                "timestamp": datetime.utcnow().isoformat()
+            }), 500
+    
     # Initialize Deepgram service for real-time transcription
     from .services.deepgram_service import DeepgramManager
     deepgram_api_key = os.environ.get('DEEPGRAM_API_KEY', '547f2a8ba13eab840e01d9f8cf1bb5dc8d1bf259')

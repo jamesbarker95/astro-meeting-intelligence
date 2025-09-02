@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 class SalesforceModelsService:
     def __init__(self):
-        # Salesforce External Client App credentials
-        self.domain = "storm-65b5252966fd52.lightning.force.com"
-        self.client_id = "3MVG9Rr0EZ2YOVMa1kkbcICIjiKauy7SHQ97hM2TlIXk8hB3kAaNfh8Ma3S1ghIQXwCPKu2XvzvFevSBADIy1"
-        self.client_secret = "A3DE16100AAE951EC0C3489825DC89EAA45B39DB9E04109C749A29EA7A85B03A"
+        # Salesforce External Client App credentials (working credentials from env.txt)
+        self.domain = "storm-65b5252966fd52.my.salesforce.com"
+        self.client_id = "3MVG9Rr0EZ2YOVMa1kkbcICIjiN9OsRDWGtxxNn0YlIkWutkvtp5xoqF9_aBx7i5fA2QlGBNzA3A7fWOOv86E"
+        self.client_secret = "58444012B7A20CBE79217E1F83D53F9925DCE637A5A418FBEA0F83B4527990C3"
         
         # API configuration
         self.api_base_url = "https://api.salesforce.com/einstein/platform/v1"
