@@ -43,16 +43,48 @@ def create_app():
     from .api.sessions import sessions_bp
     from .api.auth import auth_bp
     from .api.insights import insights_bp
-    from .api.test_salesforce import test_salesforce_bp
-    from .api.test_models_api import test_models_api_bp
     # from .api.audio import audio_bp  # REMOVED - audio processing moved to desktop app
     
     app.register_blueprint(sessions_bp, url_prefix='/api/sessions')
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(insights_bp, url_prefix='/api/insights')
-    app.register_blueprint(test_salesforce_bp, url_prefix='/api')
-    app.register_blueprint(test_models_api_bp, url_prefix='/api')
     # app.register_blueprint(audio_bp, url_prefix='/api/audio')  # REMOVED
+    
+    # Test endpoint for Salesforce Models API (inline to avoid import issues)
+    @app.route('/api/test-models-simple')
+    def test_models_simple():
+        try:
+            # Import here to avoid startup issues
+            from .services.salesforce_models_service import SalesforceModelsService
+            
+            # Create service instance
+            service = SalesforceModelsService()
+            
+            # Test configuration
+            config = {
+                "domain": service.domain,
+                "client_id_present": bool(service.client_id),
+                "api_base_url": service.api_base_url,
+                "model_name": service.model_name
+            }
+            
+            # Test JWT generation
+            jwt_success = service._generate_jwt()
+            
+            return jsonify({
+                "status": "success" if jwt_success else "failed",
+                "message": "JWT generation successful" if jwt_success else "JWT generation failed",
+                "config": config,
+                "token_preview": f"{service.access_token[:30]}..." if service.access_token else None,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": f"Test failed: {str(e)}",
+                "timestamp": datetime.utcnow().isoformat()
+            }), 500
     
     @app.route('/')
     def config():
