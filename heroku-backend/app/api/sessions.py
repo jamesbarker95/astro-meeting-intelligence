@@ -2,8 +2,10 @@ from flask import Blueprint, request, jsonify, session
 import uuid
 import datetime
 import logging
+import threading
 from structlog import get_logger
 from .auth import get_salesforce_tokens, get_slack_tokens
+from ..services.salesforce_models_service import salesforce_models_service
 
 logger = get_logger()
 sessions_bp = Blueprint('sessions', __name__)
@@ -372,6 +374,100 @@ def get_session(session_id):
         logger.error("Session retrieval failed", session_id=session_id, error=str(e))
         return jsonify({'error': 'Session retrieval failed'}), 500
 
+def _should_update_summary(session_data, final_count):
+    """Check if we should update the meeting summary based on final transcript count and duration"""
+    if final_count < 5:
+        return False
+    
+    meeting_duration_minutes = _get_meeting_duration_minutes(session_data)
+    
+    # Adaptive frequency based on meeting duration
+    if meeting_duration_minutes <= 30:
+        frequency = 5  # Every 5 final transcripts for short meetings
+    elif meeting_duration_minutes <= 60:
+        frequency = 10  # Every 10 final transcripts for medium meetings
+    else:
+        frequency = 15  # Every 15 final transcripts for long meetings
+    
+    should_update = final_count % frequency == 0
+    
+    if should_update:
+        logger.info("Summary update triggered", 
+                   final_count=final_count, 
+                   frequency=frequency, 
+                   duration_minutes=meeting_duration_minutes)
+    
+    return should_update
+
+def _get_meeting_duration_minutes(session_data):
+    """Calculate meeting duration in minutes"""
+    try:
+        if not session_data.get('started_at'):
+            return 0
+        
+        start_time = datetime.datetime.fromisoformat(session_data['started_at'])
+        end_time = datetime.datetime.utcnow()
+        
+        if session_data.get('ended_at'):
+            end_time = datetime.datetime.fromisoformat(session_data['ended_at'])
+        
+        duration_seconds = (end_time - start_time).total_seconds()
+        return int(duration_seconds / 60)
+    except Exception as e:
+        logger.error("Error calculating meeting duration", error=str(e))
+        return 0
+
+def _generate_meeting_summary_async(session_id, session_data):
+    """Generate meeting summary in background thread"""
+    def generate_summary():
+        try:
+            logger.info("Starting meeting summary generation", session_id=session_id)
+            
+            # Get final transcripts
+            transcripts = session_data.get('transcripts', [])
+            final_transcripts = [t for t in transcripts if t.get('is_final', False)]
+            
+            if not final_transcripts:
+                logger.warning("No final transcripts found for summary", session_id=session_id)
+                return
+            
+            # Get existing summary for context
+            existing_summary = session_data.get('meeting_summary', {})
+            
+            # Generate summary using Salesforce Models API
+            summary_result = salesforce_models_service.generate_meeting_summary(
+                final_transcripts, 
+                existing_summary
+            )
+            
+            if summary_result:
+                # Update session data
+                session_data['meeting_summary'] = summary_result
+                session_data['meeting_summary']['lastUpdated'] = datetime.datetime.utcnow().isoformat()
+                
+                logger.info("Meeting summary generated successfully", 
+                           session_id=session_id,
+                           summary_length=len(summary_result.get('summary', '')))
+                
+                # Broadcast summary update via WebSocket
+                from flask_socketio import emit
+                emit('meeting_summary_update', {
+                    'session_id': session_id,
+                    'summary': summary_result,
+                    'timestamp': session_data['meeting_summary']['lastUpdated']
+                }, room=session_id)
+                
+            else:
+                logger.error("Failed to generate meeting summary", session_id=session_id)
+                
+        except Exception as e:
+            logger.error("Error in meeting summary generation", error=str(e), session_id=session_id)
+    
+    # Run in background thread to avoid blocking
+    thread = threading.Thread(target=generate_summary)
+    thread.daemon = True
+    thread.start()
+
 async def add_transcript_to_session(session_id: str, transcript_data: dict):
     """Add transcript from Deepgram to session data"""
     try:
@@ -419,6 +515,27 @@ async def add_transcript_to_session(session_id: str, transcript_data: dict):
                    session_id=session_id, 
                    is_final=transcript_entry['is_final'],
                    word_count=session_data['word_count'])
+        
+        # Initialize meeting summary if needed
+        if 'meeting_summary' not in session_data:
+            session_data['meeting_summary'] = {
+                'summary': '',
+                'actionItems': [],
+                'questions': [],
+                'nextSteps': [],
+                'lastUpdated': None,
+                'finalTranscriptCount': 0
+            }
+        
+        # Check if we should generate/update meeting summary for final transcripts
+        if transcript_entry['is_final']:
+            session_data['meeting_summary']['finalTranscriptCount'] = session_data['transcript_count']
+            
+            if _should_update_summary(session_data, session_data['transcript_count']):
+                logger.info("Triggering meeting summary generation", 
+                           session_id=session_id, 
+                           final_count=session_data['transcript_count'])
+                _generate_meeting_summary_async(session_id, session_data)
         
         # Broadcast transcript update via WebSocket
         from flask_socketio import emit
