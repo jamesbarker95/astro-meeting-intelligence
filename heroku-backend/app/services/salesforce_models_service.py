@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Any
 logger = logging.getLogger(__name__)
 
 class SalesforceModelsService:
-    def __init__(self):
+    def __init__(self, access_token=None):
         # Salesforce External Client App credentials (Astro_Meeting_Summary - CONFIRMED WORKING)
         self.domain = "storm-65b5252966fd52.my.salesforce.com"
         self.client_id = "3MVG9Rr0EZ2YOVMa1kkbcICIjiKauy7SHQ97hM2TlIXk8hB3kAaNfh8Ma3S1ghIQXwCPKu2XvzvFevSBADIy1"
@@ -23,8 +23,8 @@ class SalesforceModelsService:
         self.api_base_url = "https://api.salesforce.com/einstein/platform/v1"
         self.model_name = "sfdc_ai__DefaultOpenAIGPT4OmniMini"  # GPT-4o mini
         
-        # JWT token management
-        self.access_token = None
+        # JWT token management - can use provided token or generate new one
+        self.access_token = access_token
         self.token_expires_at = None
         self.token_buffer_minutes = 5  # Refresh 5 minutes before expiry
         self.last_token_check = None
@@ -100,6 +100,12 @@ class SalesforceModelsService:
     
     def _ensure_valid_token(self) -> bool:
         """Ensure we have a valid token, refresh if needed"""
+        # If we have a token provided from Electron, use it directly
+        if self.access_token:
+            logger.info("✅ Using provided OAuth token from Electron")
+            return True
+            
+        # Otherwise, try to generate a new token (fallback for test endpoints)
         current_time = datetime.now()
         
         # Check if we need to validate token (every 5 minutes or if no previous check)

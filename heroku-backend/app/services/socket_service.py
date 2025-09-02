@@ -284,6 +284,36 @@ def register_socket_events(socketio):
                 'error': str(e)
             })
     
+    @socketio.on('session_token')
+    def handle_session_token(data):
+        """Handle OAuth token from Electron app"""
+        try:
+            session_id = data.get('session_id')
+            access_token = data.get('access_token')
+            
+            logger.info(f"🔑 Received OAuth token for session {session_id}")
+            
+            if not session_id or not access_token:
+                logger.error("❌ Missing session_id or access_token in token data")
+                emit('token_error', {'error': 'Missing session_id or access_token'})
+                return
+                
+            # Import sessions from main app
+            from .. import sessions
+            
+            if session_id in sessions:
+                # Store OAuth token in session data
+                sessions[session_id]['oauth_token'] = access_token
+                logger.info(f"✅ OAuth token stored for session {session_id}")
+                emit('token_received', {'session_id': session_id, 'status': 'success'})
+            else:
+                logger.error(f"❌ Session {session_id} not found for token storage")
+                emit('token_error', {'session_id': session_id, 'error': 'Session not found'})
+                
+        except Exception as e:
+            logger.error(f"❌ Error handling session token: {e}")
+            emit('token_error', {'error': str(e)})
+    
     @socketio.on('start_session')
     def handle_start_session(data):
         """Handle session start from WebSocket"""
@@ -480,10 +510,20 @@ def _generate_meeting_summary_async(session_id, session_data):
             existing_summary = session_data.get('meeting_summary', {})
             
             # Import here to avoid circular imports
-            from ..services.salesforce_models_service import salesforce_models_service
+            from ..services.salesforce_models_service import SalesforceModelsService
+            
+            # Get OAuth token from session (provided by Electron)
+            oauth_token = session_data.get('oauth_token')
+            
+            if not oauth_token:
+                logger.error("No OAuth token found for session", session_id=session_id)
+                return
+            
+            # Create service with the stored OAuth token
+            models_service = SalesforceModelsService(access_token=oauth_token)
             
             # Generate summary using Salesforce Models API
-            summary_result = salesforce_models_service.generate_meeting_summary(
+            summary_result = models_service.generate_meeting_summary(
                 final_transcripts, 
                 existing_summary
             )

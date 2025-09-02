@@ -30,6 +30,7 @@ export class WebSocketManager {
   private events: WebSocketEvents;
   private pendingCallbacks: Map<string, { resolve: Function; reject: Function }> = new Map();
   private currentSessionId: string | null = null;
+  private pendingOAuthToken: string | null = null;
 
   constructor(events: WebSocketEvents) {
     this.events = events;
@@ -160,7 +161,7 @@ export class WebSocketManager {
   }
 
   public createSession(contextData?: any): Promise<SessionData> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (!this.socket || !this.isConnected) {
         console.error('WebSocketManager: Cannot create session - WebSocket not connected');
         reject(new Error('WebSocket not connected'));
@@ -192,6 +193,17 @@ export class WebSocketManager {
             if (sessionId) {
               this.currentSessionId = sessionId;
               console.log('WebSocketManager: Session created successfully with ID:', sessionId);
+              
+              // Send OAuth token if we have one (hybrid approach)
+              if (this.pendingOAuthToken) {
+                console.log('WebSocketManager: Sending OAuth token for AI features...');
+                this.socket?.emit('session_token', {
+                  session_id: sessionId,
+                  access_token: this.pendingOAuthToken
+                });
+                this.pendingOAuthToken = null; // Clear after sending
+              }
+              
               resolve(session);
             } else {
               console.error('WebSocketManager: No session ID found in response. Response structure:', JSON.stringify(response, null, 2));
@@ -221,6 +233,25 @@ export class WebSocketManager {
       
       console.log('WebSocketManager: Session data:', sessionData);
       this.socket.emit('create_session', sessionData);
+      
+      // Get OAuth token and send it separately (hybrid approach)
+      try {
+        console.log('WebSocketManager: Getting OAuth token for AI features...');
+        const { AuthManager } = await import('../auth/auth-manager');
+        const authManager = AuthManager.getInstance();
+        const tokenData = await authManager.getSalesforceAccessToken();
+        
+        if (tokenData && tokenData.access_token) {
+          console.log('WebSocketManager: OAuth token obtained, sending to Heroku...');
+          // We'll send the token after we get the session_created response with session_id
+          this.pendingOAuthToken = tokenData.access_token;
+        } else {
+          console.warn('WebSocketManager: No OAuth token available - AI features may not work');
+        }
+      } catch (error) {
+        console.error('WebSocketManager: Failed to get OAuth token:', error);
+        // Don't fail session creation if OAuth fails - just log the warning
+      }
     });
   }
 
