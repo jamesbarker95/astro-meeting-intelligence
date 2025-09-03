@@ -54,6 +54,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('transcript:line', callback);
   },
   
+  // Summary event listeners
+  onSummaryGenerating: (callback: (event: any, data: any) => void) => {
+    ipcRenderer.on('summary:generating', callback);
+  },
+  onSummaryGenerated: (callback: (event: any, data: any) => void) => {
+    ipcRenderer.on('summary:generated', callback);
+  },
+  onSummaryError: (callback: (event: any, data: any) => void) => {
+    ipcRenderer.on('summary:error', callback);
+  },
+  
   // Audio event listeners
   onAudioInitialized: (callback: (event: any) => void) => {
     ipcRenderer.on('audio:initialized', callback);
@@ -120,6 +131,11 @@ declare global {
       onSessionStarted: (callback: (event: any, session: any) => void) => void;
       onSessionEnded: (callback: (event: any, session: any) => void) => void;
       onTranscriptLine: (callback: (event: any, data: any) => void) => void;
+      
+      // Summary event listeners
+      onSummaryGenerating: (callback: (event: any, data: any) => void) => void;
+      onSummaryGenerated: (callback: (event: any, data: any) => void) => void;
+      onSummaryError: (callback: (event: any, data: any) => void) => void;
       
       // Audio event listeners
       onAudioInitialized: (callback: (event: any) => void) => void;

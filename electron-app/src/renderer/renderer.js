@@ -1091,6 +1091,24 @@ function setupAudioEvents() {
         console.error('Audio error:', error);
         updateStatus('Audio error: ' + error, 'error');
     });
+
+    // Summary event handlers
+    window.electronAPI.onSummaryGenerating((event, data) => {
+        console.log('🧠 RENDERER: Summary generation started:', data);
+        showSummaryLoading(data);
+    });
+
+    window.electronAPI.onSummaryGenerated((event, data) => {
+        console.log('🧠 RENDERER: Summary generated successfully:', data);
+        displaySummary(data);
+        hideSummaryLoading();
+    });
+
+    window.electronAPI.onSummaryError((event, data) => {
+        console.error('🧠 RENDERER: Summary generation error:', data);
+        showSummaryError(data);
+        hideSummaryLoading();
+    });
 }
 
 // Status and UI functions
@@ -1115,21 +1133,41 @@ async function checkAuthStatus() {
         isAuthenticated = bothAuthenticated;
         
         if (bothAuthenticated) {
-            console.log('Showing ready section and hiding auth buttons');
+            console.log('🔍 Both services authenticated - showing ready section and loading events');
             updateStatus('All services connected! Ready to start sessions.', 'success');
             
             // Hide auth buttons
             const authSection = document.querySelector('.auth-section');
             const readySection = document.querySelector('.ready-section');
             const eventsSection = document.getElementById('events-section');
-            if (authSection) authSection.style.display = 'none';
-            if (readySection) readySection.style.display = 'block';
+            
+            console.log('🔍 UI sections found:', {
+                authSection: !!authSection,
+                readySection: !!readySection,
+                eventsSection: !!eventsSection
+            });
+            
+            if (authSection) {
+                authSection.style.display = 'none';
+                console.log('🔍 Hidden auth section');
+            }
+            if (readySection) {
+                readySection.style.display = 'block';
+                console.log('🔍 Showed ready section');
+            }
             if (eventsSection) {
                 eventsSection.style.display = 'block';
                 eventsSection.classList.remove('hidden');
+                console.log('🔍 Showed events section and removed hidden class');
+                console.log('🔍 Events section final state:', {
+                    display: eventsSection.style.display,
+                    hasHiddenClass: eventsSection.classList.contains('hidden'),
+                    computedDisplay: getComputedStyle(eventsSection).display
+                });
             }
             
             // Load user events from Salesforce
+            console.log('🔍 Starting to load user events...');
             loadUserEvents();
             
         } else {
@@ -1403,11 +1441,17 @@ function setupAudioLevelIndicator() {
 let loadedEvents = [];
 
 async function loadUserEvents() {
-    console.log('Loading user events from Salesforce...');
+    console.log('🔍 Loading user events from Salesforce...');
     
     const eventsLoading = document.getElementById('events-loading');
     const eventsContainer = document.getElementById('events-container');
     const eventsError = document.getElementById('events-error');
+    
+    console.log('🔍 Events UI elements found:', {
+        loading: !!eventsLoading,
+        container: !!eventsContainer,
+        error: !!eventsError
+    });
     
     // Show loading state
     if (eventsLoading) eventsLoading.style.display = 'flex';
@@ -1415,28 +1459,31 @@ async function loadUserEvents() {
     if (eventsError) eventsError.style.display = 'none';
     
     try {
+        console.log('🔍 Calling window.electronAPI.getUserEvents()...');
         const result = await window.electronAPI.getUserEvents();
-        console.log('User events result:', result);
-        console.log('Result success:', result.success);
-        console.log('Result events:', result.events);
-        console.log('Result error:', result.error);
+        console.log('🔍 User events result:', result);
+        console.log('🔍 Result success:', result.success);
+        console.log('🔍 Result events:', result.events);
+        console.log('🔍 Result error:', result.error);
         
         if (result.success && result.events && result.events.length > 0) {
-            console.log(`Found ${result.events.length} events, displaying them`);
+            console.log(`🔍 Found ${result.events.length} events, displaying them`);
             displayEvents(result.events);
         } else {
-            console.log('No events found or error occurred. Success:', result.success, 'Error:', result.error);
+            console.log('🔍 No events found or error occurred. Success:', result.success, 'Error:', result.error);
+            console.log('🔍 Showing events error state');
             showEventsError();
         }
         
     } catch (error) {
-        console.error('Error loading user events:', error);
+        console.error('🔍 Error loading user events:', error);
+        console.log('🔍 Showing events error state due to exception');
         showEventsError();
     }
 }
 
 function displayEvents(events) {
-    console.log(`Displaying ${events.length} events`);
+    console.log(`🔍 Displaying ${events.length} events`);
     
     // Store events globally for context access
     loadedEvents = events;
@@ -1445,19 +1492,46 @@ function displayEvents(events) {
     const eventsContainer = document.getElementById('events-container');
     const eventsError = document.getElementById('events-error');
     
+    console.log('🔍 Display events - UI elements:', {
+        loading: !!eventsLoading,
+        container: !!eventsContainer,
+        error: !!eventsError
+    });
+    
     // Hide loading, show container
-    if (eventsLoading) eventsLoading.style.display = 'none';
-    if (eventsContainer) eventsContainer.style.display = 'flex';
-    if (eventsError) eventsError.style.display = 'none';
+    if (eventsLoading) {
+        eventsLoading.style.display = 'none';
+        console.log('🔍 Hidden loading element');
+    }
+    if (eventsContainer) {
+        eventsContainer.style.display = 'flex';
+        console.log('🔍 Showed container element');
+    }
+    if (eventsError) {
+        eventsError.style.display = 'none';
+        console.log('🔍 Hidden error element');
+    }
     
     // Clear existing events
-    eventsContainer.innerHTML = '';
+    if (eventsContainer) {
+        eventsContainer.innerHTML = '';
+        console.log('🔍 Cleared existing events');
+    }
     
     // Create event items
-    events.forEach(event => {
+    events.forEach((event, index) => {
+        console.log(`🔍 Creating event element ${index + 1}:`, {
+            title: event.Title,
+            eventId: event.Event_Id,
+            hasDescription: !!event.Description
+        });
         const eventElement = createEventElement(event);
-        eventsContainer.appendChild(eventElement);
+        if (eventsContainer) {
+            eventsContainer.appendChild(eventElement);
+        }
     });
+    
+    console.log('🔍 All events displayed successfully');
 }
 
 function getEventDataById(eventId) {
@@ -1660,4 +1734,179 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Summary UI Functions
+function showSummaryLoading(data) {
+    console.log('🧠 UI: Showing summary loading state:', data);
+    
+    // Find or create summary section in the UI
+    let summarySection = document.getElementById('meeting-summary-section');
+    if (!summarySection) {
+        // Create summary section if it doesn't exist
+        const mainContent = document.querySelector('.main-content') || document.body;
+        summarySection = document.createElement('div');
+        summarySection.id = 'meeting-summary-section';
+        summarySection.innerHTML = `
+            <div class="summary-container">
+                <h3>🧠 Meeting Summary</h3>
+                <div id="summary-content">
+                    <div class="summary-loading">
+                        <div class="loading-spinner"></div>
+                        <p>Generating summary after ${data.finalTranscriptCount} final transcripts...</p>
+                        <small>This may take a few moments</small>
+                    </div>
+                </div>
+            </div>
+        `;
+        mainContent.appendChild(summarySection);
+    } else {
+        // Update existing section with loading state
+        const summaryContent = document.getElementById('summary-content');
+        summaryContent.innerHTML = `
+            <div class="summary-loading">
+                <div class="loading-spinner"></div>
+                <p>Generating summary after ${data.finalTranscriptCount} final transcripts...</p>
+                <small>This may take a few moments</small>
+            </div>
+        `;
+    }
+    
+    // Add CSS for loading animation if not already present
+    if (!document.getElementById('summary-styles')) {
+        const style = document.createElement('style');
+        style.id = 'summary-styles';
+        style.textContent = `
+            .summary-container {
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                padding: 20px;
+                margin: 20px 0;
+            }
+            .summary-loading {
+                text-align: center;
+                padding: 20px;
+            }
+            .loading-spinner {
+                border: 3px solid #f3f3f3;
+                border-top: 3px solid #007bff;
+                border-radius: 50%;
+                width: 30px;
+                height: 30px;
+                animation: spin 1s linear infinite;
+                margin: 0 auto 10px;
+            }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            .summary-section {
+                margin: 15px 0;
+                padding: 15px;
+                background: white;
+                border-radius: 6px;
+                border-left: 4px solid #007bff;
+            }
+            .summary-section h4 {
+                margin: 0 0 10px 0;
+                color: #333;
+            }
+            .summary-list {
+                list-style: none;
+                padding: 0;
+            }
+            .summary-list li {
+                padding: 5px 0;
+                border-bottom: 1px solid #eee;
+            }
+            .summary-list li:last-child {
+                border-bottom: none;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+function displaySummary(data) {
+    console.log('🧠 UI: Displaying generated summary:', data);
+    
+    const summaryContent = document.getElementById('summary-content');
+    if (!summaryContent) {
+        console.error('Summary content element not found');
+        return;
+    }
+    
+    const summary = data.summary;
+    summaryContent.innerHTML = `
+        <div class="summary-success">
+            <div class="summary-header">
+                <h4>✅ Summary Generated Successfully</h4>
+                <small>Generated at ${new Date(data.timestamp).toLocaleTimeString()} • ${data.finalTranscriptCount} transcripts processed</small>
+            </div>
+            
+            <div class="summary-section">
+                <h4>📋 Summary</h4>
+                <p>${summary.summary || 'Summary content will appear here'}</p>
+            </div>
+            
+            <div class="summary-section">
+                <h4>✅ Action Items</h4>
+                <ul class="summary-list">
+                    ${(summary.actionItems || []).map(item => `<li>• ${escapeHtml(item)}</li>`).join('')}
+                </ul>
+            </div>
+            
+            <div class="summary-section">
+                <h4>❓ Questions & Concerns</h4>
+                <ul class="summary-list">
+                    ${(summary.questions || []).map(item => `<li>• ${escapeHtml(item)}</li>`).join('')}
+                </ul>
+            </div>
+            
+            <div class="summary-section">
+                <h4>🎯 Next Steps</h4>
+                <ul class="summary-list">
+                    ${(summary.nextSteps || []).map(item => `<li>• ${escapeHtml(item)}</li>`).join('')}
+                </ul>
+            </div>
+        </div>
+    `;
+    
+    // Show success notification
+    updateStatus('Meeting summary generated successfully!', 'success');
+}
+
+function showSummaryError(data) {
+    console.error('🧠 UI: Showing summary error:', data);
+    
+    const summaryContent = document.getElementById('summary-content');
+    if (!summaryContent) {
+        console.error('Summary content element not found');
+        return;
+    }
+    
+    summaryContent.innerHTML = `
+        <div class="summary-error">
+            <h4>❌ Summary Generation Failed</h4>
+            <p>Unable to generate meeting summary after ${data.finalTranscriptCount} transcripts.</p>
+            <p><strong>Error:</strong> ${escapeHtml(data.error)}</p>
+            <button onclick="retrySummaryGeneration()" class="retry-btn">🔄 Retry</button>
+        </div>
+    `;
+    
+    // Show error notification
+    updateStatus('Summary generation failed: ' + data.error, 'error');
+}
+
+function hideSummaryLoading() {
+    // This function is called after success or error, so we don't need to do anything special
+    // The content is already replaced by displaySummary() or showSummaryError()
+    console.log('🧠 UI: Summary loading state hidden');
+}
+
+function retrySummaryGeneration() {
+    console.log('🧠 UI: Retrying summary generation...');
+    // For now, just show a message. In a full implementation, we'd trigger the summary generation again
+    updateStatus('Summary retry not yet implemented', 'info');
 }

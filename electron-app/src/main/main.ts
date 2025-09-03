@@ -47,11 +47,12 @@ class MainProcess {
       }
     };
     
-    this.websocketManager = new WebSocketManager(websocketEvents);
+    this.websocketManager = new WebSocketManager(websocketEvents, this.authManager);
     this.audioManager = new AudioManager();
     
-    // Connect AudioManager to WebSocket manager
+    // Connect AudioManager to WebSocket manager and AuthManager
     this.audioManager.setWebSocketManager(this.websocketManager);
+    this.audioManager.setAuthManager(this.authManager);
     
     this.setupAppEvents();
     this.setupIpcHandlers();
@@ -338,6 +339,22 @@ class MainProcess {
     this.audioManager.on('transcription_error', (error) => {
       console.error('🎵 MAIN: AssemblyAI transcription error:', error);
       this.mainWindow?.webContents.send('audio:error', error);
+    });
+
+    // Summary event handlers
+    this.audioManager.on('summary_generating', (data) => {
+      console.log('🧠 MAIN: Summary generation started:', data);
+      this.mainWindow?.webContents.send('summary:generating', data);
+    });
+
+    this.audioManager.on('summary_generated', (data) => {
+      console.log('🧠 MAIN: Summary generated successfully:', data);
+      this.mainWindow?.webContents.send('summary:generated', data);
+    });
+
+    this.audioManager.on('summary_error', (data) => {
+      console.error('🧠 MAIN: Summary generation error:', data);
+      this.mainWindow?.webContents.send('summary:error', data);
     });
 
     this.audioManager.on('deepgram-connected', () => {

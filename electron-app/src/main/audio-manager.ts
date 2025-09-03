@@ -9,6 +9,8 @@ export class AudioManager extends EventEmitter {
   private websocketManager: WebSocketManager | null = null;
   private audioProcessor: AudioProcessor | null = null;
   private assemblyAIApiKey = 'adec0151627147e9813c8da9cf7bcb4d'; // AssemblyAI API key
+  private finalTranscriptCount = 0; // Track final transcripts for auto-summary
+  private authManager: any = null; // Will be injected for summary generation
 
   constructor() {
     super();
@@ -22,6 +24,18 @@ export class AudioManager extends EventEmitter {
       // Set up event handlers for transcription
       this.audioProcessor.on('transcript', (transcriptData: any) => {
         console.log('🎵 AUDIO MANAGER: Transcript received:', transcriptData);
+        
+        // Track final transcripts for auto-summary
+        if (transcriptData.isFinal) {
+          this.finalTranscriptCount++;
+          console.log(`🧠 AUDIO MANAGER: Final transcript count: ${this.finalTranscriptCount}`);
+          
+          // Trigger auto-summary every 5 final transcripts
+          if (this.finalTranscriptCount % 5 === 0) {
+            console.log(`🧠 AUDIO MANAGER: Auto-triggering summary after ${this.finalTranscriptCount} final transcripts`);
+            this.triggerAutoSummary();
+          }
+        }
         
         // Send transcript to Heroku via WebSocket
         if (this.websocketManager) {
@@ -48,6 +62,11 @@ export class AudioManager extends EventEmitter {
     console.log('🔗 AUDIO MANAGER: WebSocket manager connected');
   }
 
+  setAuthManager(authManager: any): void {
+    this.authManager = authManager;
+    console.log('🔗 AUDIO MANAGER: Auth manager connected for summary generation');
+  }
+
   async initialize(): Promise<void> {
     console.log('AudioManager (stub): Initialized');
     this.emit('initialized');
@@ -57,6 +76,10 @@ export class AudioManager extends EventEmitter {
     console.log('🎵 AUDIO MANAGER: Starting audio capture with AssemblyAI transcription');
     
     try {
+      // Reset final transcript counter for new session
+      this.finalTranscriptCount = 0;
+      console.log('🧠 AUDIO MANAGER: Reset final transcript counter for new session');
+      
       // Start AssemblyAI processing
       if (this.audioProcessor) {
         await this.audioProcessor.startProcessing();
@@ -149,6 +172,49 @@ export class AudioManager extends EventEmitter {
       hasAudioSignal: false,
       audioLevel: 0
     };
+  }
+
+  private async triggerAutoSummary(): Promise<void> {
+    try {
+      console.log('🧠 AUDIO MANAGER: Starting auto-summary generation...');
+      
+      if (!this.authManager) {
+        console.warn('🧠 AUDIO MANAGER: Cannot generate summary - AuthManager not available');
+        return;
+      }
+      
+      // Emit event to UI to show loading state
+      this.emit('summary_generating', { 
+        finalTranscriptCount: this.finalTranscriptCount,
+        trigger: 'auto'
+      });
+      
+      // Generate summary using AuthManager (will be implemented next)
+      const summary = await this.authManager.generateMeetingSummary();
+      
+      if (summary) {
+        console.log('🧠 AUDIO MANAGER: Auto-summary generated successfully');
+        
+        // Send summary to Heroku for storage
+        if (this.websocketManager) {
+          this.websocketManager.sendSummary(summary);
+        }
+        
+        // Emit to UI for immediate display
+        this.emit('summary_generated', {
+          summary,
+          finalTranscriptCount: this.finalTranscriptCount,
+          trigger: 'auto'
+        });
+      }
+    } catch (error) {
+      console.error('🧠 AUDIO MANAGER: Auto-summary generation failed:', error);
+      this.emit('summary_error', {
+        error: error instanceof Error ? error.message : String(error),
+        finalTranscriptCount: this.finalTranscriptCount,
+        trigger: 'auto'
+      });
+    }
   }
 
   cleanup(): void {

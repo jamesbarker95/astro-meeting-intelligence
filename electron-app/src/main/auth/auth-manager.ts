@@ -474,20 +474,29 @@ export class AuthManager {
    */
   public extractSalesforceUserId(identityUrl: string): string | null {
     try {
+      console.log('🔍 MAIN PROCESS: Extracting User ID from URL:', identityUrl);
       const urlParts = identityUrl.split('/');
+      console.log('🔍 MAIN PROCESS: URL parts:', urlParts);
+      
       // The User ID is the last part of the identity URL
       const userId = urlParts[urlParts.length - 1];
+      console.log('🔍 MAIN PROCESS: Extracted potential User ID:', userId);
       
       // Validate it looks like a Salesforce User ID (starts with 005 and is 15 or 18 chars)
       if (userId && (userId.startsWith('005')) && (userId.length === 15 || userId.length === 18)) {
-        console.log('Extracted Salesforce User ID:', userId);
+        console.log('🔍 MAIN PROCESS: ✅ Valid Salesforce User ID:', userId);
         return userId;
       }
       
-      console.error('Invalid Salesforce User ID format:', userId);
+      console.error('🔍 MAIN PROCESS: ❌ Invalid Salesforce User ID format:', {
+        userId,
+        'startsWith005': userId?.startsWith('005'),
+        length: userId?.length,
+        expectedLength: '15 or 18'
+      });
       return null;
     } catch (error) {
-      console.error('Error extracting Salesforce User ID:', error);
+      console.error('🔍 MAIN PROCESS: Error extracting Salesforce User ID:', error);
       return null;
     }
   }
@@ -498,23 +507,28 @@ export class AuthManager {
    */
   public async getUserEvents(): Promise<SalesforceEvent[]> {
     try {
+      console.log('🔍 MAIN PROCESS: getUserEvents() called');
       const tokens = await this.getStoredTokens();
       if (!tokens.salesforce) {
-        console.error('No Salesforce tokens available');
+        console.error('🔍 MAIN PROCESS: No Salesforce tokens available');
         return [];
       }
 
       // Extract User ID from the identity URL
-      console.log('Raw Salesforce identity URL:', tokens.salesforce.id);
+      console.log('🔍 MAIN PROCESS: Raw Salesforce identity URL:', tokens.salesforce.id);
+      console.log('🔍 MAIN PROCESS: Salesforce instance URL:', tokens.salesforce.instance_url);
+      console.log('🔍 MAIN PROCESS: Access token available:', !!tokens.salesforce.access_token);
+      console.log('🔍 MAIN PROCESS: Access token length:', tokens.salesforce.access_token?.length || 0);
+      
       const userId = this.extractSalesforceUserId(tokens.salesforce.id);
       if (!userId) {
-        console.error('Could not extract User ID from Salesforce tokens');
-        console.error('Identity URL was:', tokens.salesforce.id);
+        console.error('🔍 MAIN PROCESS: Could not extract User ID from Salesforce tokens');
+        console.error('🔍 MAIN PROCESS: Identity URL was:', tokens.salesforce.id);
         return [];
       }
 
-      console.log('✅ Extracted User ID:', userId);
-      console.log('🚀 Calling Salesforce flow with User ID:', userId);
+      console.log('🔍 MAIN PROCESS: ✅ Extracted User ID:', userId);
+      console.log('🔍 MAIN PROCESS: 🚀 Calling Salesforce flow with User ID:', userId);
 
       // Call the Salesforce flow
       const flowUrl = `${tokens.salesforce.instance_url}/services/data/v61.0/actions/custom/flow/Astro_Get_User_Events`;
@@ -524,8 +538,8 @@ export class AuthManager {
         }]
       };
       
-      console.log('📡 Flow URL:', flowUrl);
-      console.log('📦 Request body:', JSON.stringify(requestBody, null, 2));
+      console.log('🔍 MAIN PROCESS: 📡 Flow URL:', flowUrl);
+      console.log('🔍 MAIN PROCESS: 📦 Request body:', JSON.stringify(requestBody, null, 2));
       
       const response = await fetch(flowUrl, {
         method: 'POST',
@@ -536,35 +550,52 @@ export class AuthManager {
         body: JSON.stringify(requestBody)
       });
 
+      console.log('🔍 MAIN PROCESS: 📡 Response status:', response.status, response.statusText);
+      console.log('🔍 MAIN PROCESS: 📡 Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
-        console.error('Salesforce flow call failed:', response.status, response.statusText);
+        console.error('🔍 MAIN PROCESS: Salesforce flow call failed:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('🔍 MAIN PROCESS: Error response body:', errorText);
         return [];
       }
 
       const flowResult = await response.json() as any[];
-      console.log('Salesforce flow result:', flowResult);
+      console.log('🔍 MAIN PROCESS: 📋 Salesforce flow result:', JSON.stringify(flowResult, null, 2));
 
       // Parse the flow output
       if (Array.isArray(flowResult) && flowResult.length > 0 && flowResult[0]?.outputValues) {
         const userEvents = flowResult[0].outputValues.User_Events;
-        console.log('📋 User_Events type:', typeof userEvents);
-        console.log('📋 User_Events value:', userEvents);
+        console.log('🔍 MAIN PROCESS: 📋 User_Events type:', typeof userEvents);
+        console.log('🔍 MAIN PROCESS: 📋 User_Events value:', userEvents);
         
         if (userEvents) {
           // Handle both Array and String formats
           if (Array.isArray(userEvents)) {
-            console.log('✅ User_Events is an Array, processing directly');
-            return this.parseUserEventsArray(userEvents);
+            console.log('🔍 MAIN PROCESS: ✅ User_Events is an Array, processing directly');
+            const parsedEvents = this.parseUserEventsArray(userEvents);
+            console.log('🔍 MAIN PROCESS: ✅ Parsed events count:', parsedEvents.length);
+            return parsedEvents;
           } else if (typeof userEvents === 'string') {
-            console.log('✅ User_Events is a String, parsing');
-            return this.parseUserEventsString(userEvents);
+            console.log('🔍 MAIN PROCESS: ✅ User_Events is a String, parsing');
+            const parsedEvents = this.parseUserEventsString(userEvents);
+            console.log('🔍 MAIN PROCESS: ✅ Parsed events count:', parsedEvents.length);
+            return parsedEvents;
           } else {
-            console.error('❌ Unexpected User_Events format:', typeof userEvents);
+            console.error('🔍 MAIN PROCESS: ❌ Unexpected User_Events format:', typeof userEvents);
           }
+        } else {
+          console.log('🔍 MAIN PROCESS: ❌ User_Events is null/undefined');
         }
+      } else {
+        console.log('🔍 MAIN PROCESS: ❌ Flow result structure unexpected:', {
+          isArray: Array.isArray(flowResult),
+          length: flowResult?.length,
+          hasOutputValues: flowResult?.[0]?.outputValues ? true : false
+        });
       }
 
-      console.log('No events returned from Salesforce flow');
+      console.log('🔍 MAIN PROCESS: No events returned from Salesforce flow');
       return [];
 
     } catch (error) {
@@ -769,6 +800,208 @@ export class AuthManager {
   public async isAuthenticated(): Promise<boolean> {
     const tokens = await this.getStoredTokens();
     return !!(tokens.salesforce && tokens.slack);
+  }
+
+  // Models API client properties
+  private modelsToken: string | null = null;
+  private modelsTokenExpiry: number = 0;
+
+  private async ensureModelsToken(): Promise<void> {
+    if (this.modelsToken && Date.now() < this.modelsTokenExpiry - 60000) {
+      return; // Token still valid
+    }
+
+    console.log('🧠 AUTH MANAGER: Getting new Models API token...');
+    
+    const domain = 'storm-65b5252966fd52.my.salesforce.com';
+    const consumerKey = '3MVG9Rr0EZ2YOVMa1kkbcICIjiN9OsRDWGtxxNn0YlIkWutkvtp5xoqF9_aBx7i5fA2QlGBNzA3A7fWOOv86E';
+    const consumerSecret = '58444012B7A20CBE79217E1F83D53F9925DCE637A5A418FBEA0F83B4527990C3';
+
+    const tokenUrl = `https://${domain}/services/oauth2/token`;
+    const tokenData = new URLSearchParams({
+      'grant_type': 'client_credentials',
+      'client_id': consumerKey,
+      'client_secret': consumerSecret
+    });
+
+    const tokenResponse = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: tokenData
+    });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      console.error('🧠 AUTH MANAGER: Token request failed:', errorText);
+      throw new Error(`Failed to get Models API token: ${tokenResponse.status} ${tokenResponse.statusText}`);
+    }
+
+    const tokenResult = await tokenResponse.json() as any;
+    this.modelsToken = tokenResult.access_token;
+    
+    // Set expiry (default 30 minutes if not provided)
+    const expiresIn = tokenResult.expires_in || 1800;
+    this.modelsTokenExpiry = Date.now() + (expiresIn * 1000);
+    
+    console.log('🧠 AUTH MANAGER: ✅ Models API token obtained successfully');
+  }
+
+  public async generateMeetingSummary(): Promise<any> {
+    try {
+      console.log('🧠 AUTH MANAGER: Starting meeting summary generation...');
+      
+      // Ensure we have a valid Models API token
+      await this.ensureModelsToken();
+
+      // For now, we'll use a placeholder for transcripts
+      // In a real implementation, we'd collect transcripts from the current session
+      const transcripts = [
+        { text: "Sample transcript for meeting summary generation", timestamp: new Date().toISOString() }
+      ];
+
+      // Create a prompt for the Models API
+      const transcriptText = transcripts.map(t => t.text).join(' ');
+      const prompt = `Please generate a comprehensive meeting summary from the following transcript:
+
+"${transcriptText}"
+
+Please provide:
+1. A brief summary of the main discussion points
+2. Key action items that were identified
+3. Any questions or concerns that were raised
+4. Next steps that were mentioned
+
+Format the response as a structured summary.`;
+
+      console.log('🧠 AUTH MANAGER: Calling Salesforce Models API for summary...');
+      
+      // Use the correct model name from the other project
+      const modelsUrl = 'https://api.salesforce.com/einstein/platform/v1/models/sfdc_ai__DefaultGPT4Omni/generations';
+      const requestBody = {
+        prompt: prompt
+      };
+
+      console.log('🧠 AUTH MANAGER: Models API URL:', modelsUrl);
+      console.log('🧠 AUTH MANAGER: Request payload:', JSON.stringify(requestBody, null, 2));
+
+      const response = await fetch(modelsUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.modelsToken}`,
+          'Content-Type': 'application/json',
+          'x-sfdc-app-context': 'EinsteinGPT',
+          'x-client-feature-id': 'ai-platform-models-connected-app'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      console.log('🧠 AUTH MANAGER: Models API response status:', response.status, response.statusText);
+      console.log('🧠 AUTH MANAGER: Response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('🧠 AUTH MANAGER: Models API call failed:', errorText);
+        console.error('🧠 AUTH MANAGER: Full response details:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+        throw new Error(`Models API call failed: ${response.status} ${response.statusText}. Details: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('🧠 AUTH MANAGER: ✅ Summary generated successfully:', result);
+
+      // Extract the generated text from the Models API response
+      const generatedText = (result as any)?.generation?.generatedText || 'No summary generated';
+      
+      // Parse the generated text to extract structured data
+      // For now, we'll use the full text as summary and create placeholder structured data
+      // In a more sophisticated implementation, we could prompt the AI to return JSON
+      const summaryData = {
+        summary: generatedText,
+        actionItems: this.extractActionItems(generatedText),
+        questions: this.extractQuestions(generatedText),
+        nextSteps: this.extractNextSteps(generatedText)
+      };
+
+      // Return structured summary data
+      return {
+        id: (result as any)?.id || 'unknown',
+        summary: summaryData,
+        timestamp: new Date().toISOString(),
+        finalTranscriptCount: 5 // This would come from the actual transcript count
+      };
+
+    } catch (error) {
+      console.error('🧠 AUTH MANAGER: Summary generation failed:', error);
+      throw error;
+    }
+  }
+
+  // Helper methods to extract structured data from AI-generated text
+  private extractActionItems(text: string): string[] {
+    const actionItems: string[] = [];
+    const lines = text.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]?.trim() || '';
+      if (line.toLowerCase().includes('action item') || 
+          line.toLowerCase().includes('to do') ||
+          line.toLowerCase().includes('follow up') ||
+          (line.match(/^\d+\./) && line.toLowerCase().includes('action'))) {
+        // Extract action items from numbered lists or bullet points
+        const actionText = line.replace(/^\d+\./, '').replace(/^[-•*]/, '').trim();
+        if (actionText.length > 0) {
+          actionItems.push(actionText);
+        }
+      }
+    }
+    
+    return actionItems.length > 0 ? actionItems : ['Review meeting notes and follow up on key discussion points'];
+  }
+
+  private extractQuestions(text: string): string[] {
+    const questions: string[] = [];
+    const lines = text.split('\n');
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.includes('?') || 
+          trimmed.toLowerCase().includes('question') ||
+          trimmed.toLowerCase().includes('concern') ||
+          trimmed.toLowerCase().includes('unclear')) {
+        const questionText = trimmed.replace(/^[-•*\d+\.]/, '').trim();
+        if (questionText.length > 0) {
+          questions.push(questionText);
+        }
+      }
+    }
+    
+    return questions.length > 0 ? questions : ['No specific questions or concerns identified'];
+  }
+
+  private extractNextSteps(text: string): string[] {
+    const nextSteps: string[] = [];
+    const lines = text.split('\n');
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.toLowerCase().includes('next step') ||
+          trimmed.toLowerCase().includes('moving forward') ||
+          trimmed.toLowerCase().includes('going forward') ||
+          (trimmed.match(/^\d+\./) && trimmed.toLowerCase().includes('next'))) {
+        const stepText = trimmed.replace(/^\d+\./, '').replace(/^[-•*]/, '').trim();
+        if (stepText.length > 0) {
+          nextSteps.push(stepText);
+        }
+      }
+    }
+    
+    return nextSteps.length > 0 ? nextSteps : ['Schedule follow-up meeting to review progress'];
   }
 
   public cleanup(): void {

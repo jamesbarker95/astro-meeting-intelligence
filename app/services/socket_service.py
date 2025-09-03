@@ -291,7 +291,6 @@ def register_socket_events(socketio):
                 'type': sessions[session_id].get('type', 'manual'),
                 'transcript_count': sessions[session_id].get('transcript_count', 0),
                 'word_count': sessions[session_id].get('word_count', 0),
-                'oauth_token': sessions[session_id].get('oauth_token'),
                 'assemblyai_active': sessions[session_id].get('assemblyai_active', False)
             }
             
@@ -346,56 +345,7 @@ def register_socket_events(socketio):
                 'error': str(e)
             })
     
-    @socketio.on('session_token')
-    def handle_session_token(data):
-        """Handle JWT token from Electron for AI features"""
-        try:
-            session_id = data.get('session_id')
-            access_token = data.get('access_token')
-            
-            if not session_id or not access_token:
-                logger.error("Session token missing required data", session_id=session_id, has_token=bool(access_token))
-                emit('token_error', {'error': 'Session ID and access token required'})
-                return
-            
-            logger.info("JWT token received from Electron", session_id=session_id, token_length=len(access_token))
-            
-            # Store in WebSocket sessions for immediate use
-            if session_id in sessions:
-                sessions[session_id]['oauth_token'] = access_token
-                logger.info("JWT token stored in WebSocket session", session_id=session_id)
-            else:
-                logger.warning("Session not found for token storage", session_id=session_id)
-            
-            # Also store in Flask session for Models API compatibility
-            from flask import session as flask_session
-            
-            # Get instance URL from existing session data if available
-            instance_url = None
-            if session_id in sessions and 'meeting_brief' in sessions[session_id]:
-                # Extract instance URL from meeting brief or use default
-                instance_url = 'https://storm-65b5252966fd52.my.salesforce.com'  # Default from logs
-            
-            flask_session[f'salesforce_tokens_{session_id}'] = {
-                'access_token': access_token,
-                'instance_url': instance_url
-            }
-            
-            logger.info("JWT token stored for Models API", session_id=session_id)
-            
-            # Acknowledge token receipt
-            emit('token_stored', {
-                'success': True,
-                'session_id': session_id,
-                'message': 'JWT token stored successfully'
-            })
-            
-        except Exception as e:
-            logger.error("Error storing session token", error=str(e), session_id=data.get('session_id'))
-            emit('token_error', {
-                'success': False,
-                'error': str(e)
-            })
+    # JWT token handler removed - Models API now handled in Electron
     
     @socketio.on('manual_summary')
     def handle_manual_summary(data):
@@ -410,22 +360,11 @@ def register_socket_events(socketio):
             
             logger.info("Manual summary requested", session_id=session_id, client_id=request.sid)
             
-            # Get current final transcript count for logging
-            if session_id in active_sessions:
-                final_count = sum(1 for t in active_sessions[session_id].get('transcripts', []) if t.get('is_final', False))
-            else:
-                final_count = 0
-            
-            # Call the same summary function used by auto-trigger
-            trigger_meeting_summary(session_id, final_count)
+            # Manual summary now handled in Electron app
+            logger.info("Manual summary request - redirected to Electron app", session_id=session_id)
             
         except Exception as e:
             logger.error("Error handling manual summary", error=str(e), session_id=data.get('session_id'))
-            emit('summary_error', {
-                'session_id': data.get('session_id'),
-                'error': f'Manual summary failed: {str(e)}',
-                'timestamp': datetime.datetime.utcnow().isoformat()
-            })
     
     @socketio.on('error')
     def handle_error(data):
@@ -450,6 +389,9 @@ def register_socket_events(socketio):
 def trigger_meeting_summary(session_id, final_count):
     """Trigger meeting summary generation using Models API"""
     try:
+        # Import sessions properly
+        from .. import sessions as active_sessions
+        
         # Get all final transcripts for this session
         if session_id not in active_sessions:
             logger.error("Session not found for summary generation", session_id=session_id)
@@ -469,84 +411,16 @@ def trigger_meeting_summary(session_id, final_count):
             logger.warning("Insufficient transcript text for summary", session_id=session_id, text_length=len(transcript_text))
             return
         
-        logger.info("Generating meeting summary", session_id=session_id, transcript_length=len(transcript_text), final_count=final_count)
+        logger.info("Meeting summary trigger - handled by Electron app", 
+                   session_id=session_id, 
+                   transcript_length=len(transcript_text), 
+                   final_count=final_count)
         
-        # Get JWT token from WebSocket session (not Flask session)
-        from .. import sessions
-        if session_id not in sessions:
-            logger.error("Session not found in sessions dict for JWT token", session_id=session_id)
-            return
-            
-        access_token = sessions[session_id].get('oauth_token')
-        if not access_token:
-            logger.error("No OAuth token found for session", session_id=session_id)
-            emit('summary_error', {
-                'session_id': session_id,
-                'final_count': final_count,
-                'error': 'No OAuth token available for Models API',
-                'timestamp': datetime.datetime.utcnow().isoformat()
-            }, room=session_id)
-            return
-        
-        # Direct Salesforce Models API call
-        import requests
-        instance_url = 'https://storm-65b5252966fd52.my.salesforce.com'
-        models_url = f"{instance_url}/services/data/v58.0/sobjects/Models__c"
-        
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json'
-        }
-        
-        payload = {
-            'Session_Type__c': 'Meeting Summary',
-            'Input_Text__c': transcript_text,
-            'Session_ID__c': session_id
-        }
-        
-        try:
-            logger.info("Calling Salesforce Models API", session_id=session_id, url=models_url)
-            response = requests.post(models_url, headers=headers, json=payload, timeout=30)
-            
-            if response.status_code == 200 or response.status_code == 201:
-                result = response.json()
-                logger.info("Meeting summary generated successfully", session_id=session_id, final_count=final_count, models_id=result.get('id'))
-                
-                # Broadcast summary update to clients
-                emit('summary_generated', {
-                    'session_id': session_id,
-                    'final_count': final_count,
-                    'summary_data': result,
-                    'timestamp': datetime.datetime.utcnow().isoformat(),
-                    'message': f'Meeting summary generated after {final_count} final transcripts'
-                }, room=session_id)
-                
-            else:
-                logger.error("Salesforce Models API call failed", session_id=session_id, status_code=response.status_code, response_text=response.text)
-                emit('summary_error', {
-                    'session_id': session_id,
-                    'final_count': final_count,
-                    'error': f'Models API returned {response.status_code}: {response.text}',
-                    'timestamp': datetime.datetime.utcnow().isoformat()
-                }, room=session_id)
-                
-        except requests.exceptions.RequestException as api_error:
-            logger.error("Error calling Salesforce Models API", session_id=session_id, error=str(api_error))
-            emit('summary_error', {
-                'session_id': session_id,
-                'final_count': final_count,
-                'error': f'API request failed: {str(api_error)}',
-                'timestamp': datetime.datetime.utcnow().isoformat()
-            }, room=session_id)
+        # Models API generation is now handled in Electron app
+        # This function just logs the trigger event for Heroku records
         
     except Exception as e:
-        logger.error("Error triggering meeting summary", session_id=session_id, error=str(e))
-        emit('summary_error', {
-            'session_id': session_id,
-            'final_count': final_count,
-            'error': f'Summary generation failed: {str(e)}',
-            'timestamp': datetime.datetime.utcnow().isoformat()
-        }, room=session_id)
+        logger.error("Error in meeting summary trigger logging", session_id=session_id, error=str(e))
 
 # Import required modules for the socket service
 import datetime

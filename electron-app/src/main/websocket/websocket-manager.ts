@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { AuthManager } from '../auth/auth-manager';
 
 export interface SessionData {
   session_id: string;
@@ -31,9 +32,11 @@ export class WebSocketManager {
   private pendingCallbacks: Map<string, { resolve: Function; reject: Function }> = new Map();
   private currentSessionId: string | null = null;
   private pendingOAuthToken: string | null = null;
+  private authManager: AuthManager;
 
-  constructor(events: WebSocketEvents) {
+  constructor(events: WebSocketEvents, authManager: AuthManager) {
     this.events = events;
+    this.authManager = authManager;
   }
 
   public async connect(backendUrl: string): Promise<boolean> {
@@ -237,14 +240,12 @@ export class WebSocketManager {
       // Get OAuth token and send it separately (hybrid approach)
       try {
         console.log('WebSocketManager: Getting OAuth token for AI features...');
-        const { AuthManager } = await import('../auth/auth-manager');
-        const authManager = AuthManager.getInstance();
-        const tokenData = await authManager.getSalesforceAccessToken();
+        const tokens = await this.authManager.getStoredTokens();
         
-        if (tokenData && tokenData.access_token) {
+        if (tokens.salesforce && tokens.salesforce.access_token) {
           console.log('WebSocketManager: OAuth token obtained, sending to Heroku...');
           // We'll send the token after we get the session_created response with session_id
-          this.pendingOAuthToken = tokenData.access_token;
+          this.pendingOAuthToken = tokens.salesforce.access_token;
         } else {
           console.warn('WebSocketManager: No OAuth token available - AI features may not work');
         }
@@ -426,5 +427,36 @@ export class WebSocketManager {
 
   public getCurrentSessionId(): string | null {
     return this.currentSessionId;
+  }
+
+  public sendSummary(summaryData: any): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.isConnected) {
+        console.log('❌ WEBSOCKET: Cannot send summary - not connected');
+        reject(new Error('WebSocket not connected'));
+        return;
+      }
+      
+      if (!this.currentSessionId) {
+        console.log('❌ WEBSOCKET: Cannot send summary - no active session');
+        reject(new Error('No active session for summary transmission'));
+        return;
+      }
+
+      console.log('🧠 WEBSOCKET: Sending meeting summary to Heroku:', {
+        sessionId: this.currentSessionId,
+        summaryId: summaryData.id,
+        timestamp: summaryData.timestamp,
+        finalTranscriptCount: summaryData.finalTranscriptCount
+      });
+      
+      this.socket.emit('meeting_summary', {
+        session_id: this.currentSessionId,
+        summary_data: summaryData
+      });
+      
+      console.log('✅ WEBSOCKET: Meeting summary sent successfully');
+      resolve(true);
+    });
   }
 }
