@@ -137,7 +137,7 @@
             padding: 40px;
         }
         
-        .refresh-btn {
+        .refresh-btn, .summary-btn {
             background: #667eea;
             color: white;
             border: none;
@@ -146,10 +146,25 @@
             cursor: pointer;
             font-weight: 500;
             transition: background-color 0.3s;
+            margin-left: 10px;
         }
         
-        .refresh-btn:hover {
+        .refresh-btn:hover, .summary-btn:hover {
             background: #5a6fd8;
+        }
+        
+        .summary-btn {
+            background: #28a745;
+            margin-left: 0;
+        }
+        
+        .summary-btn:hover {
+            background: #218838;
+        }
+        
+        .summary-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
         }
         
         .deepgram-status {
@@ -290,7 +305,10 @@
         <div class="transcripts-section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h3>📝 Live Transcripts</h3>
-                <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
+                <div>
+                    <button class="summary-btn" id="generateSummaryBtn" onclick="generateSummary()">🧠 Generate Summary</button>
+                    <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
+                </div>
             </div>
             
             {% if session.transcripts and session.transcripts|length > 0 %}
@@ -311,8 +329,62 @@
         </div>
     </div>
     
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script>
-        // Auto-refresh every 5 seconds if session is active
+        // WebSocket connection for real-time updates
+        const socket = io();
+        const sessionId = '{{ session.session_id }}';
+        
+        // Join the session room for real-time updates
+        socket.emit('join_session', { session_id: sessionId });
+        
+        // Listen for summary generation results
+        socket.on('summary_generated', function(data) {
+            if (data.session_id === sessionId) {
+                console.log('Summary generated:', data);
+                const btn = document.getElementById('generateSummaryBtn');
+                btn.textContent = '✅ Summary Generated!';
+                btn.disabled = false;
+                
+                // Show success message
+                alert(`Meeting summary generated successfully after ${data.final_count} final transcripts!`);
+                
+                // Reset button after 3 seconds
+                setTimeout(() => {
+                    btn.textContent = '🧠 Generate Summary';
+                }, 3000);
+            }
+        });
+        
+        // Listen for summary generation errors
+        socket.on('summary_error', function(data) {
+            if (data.session_id === sessionId) {
+                console.error('Summary error:', data);
+                const btn = document.getElementById('generateSummaryBtn');
+                btn.textContent = '❌ Summary Failed';
+                btn.disabled = false;
+                
+                // Show error message
+                alert(`Summary generation failed: ${data.error}`);
+                
+                // Reset button after 3 seconds
+                setTimeout(() => {
+                    btn.textContent = '🧠 Generate Summary';
+                }, 3000);
+            }
+        });
+        
+        // Manual summary generation function
+        function generateSummary() {
+            const btn = document.getElementById('generateSummaryBtn');
+            btn.textContent = '🔄 Generating...';
+            btn.disabled = true;
+            
+            console.log('Requesting manual summary for session:', sessionId);
+            socket.emit('manual_summary', { session_id: sessionId });
+        }
+        
+        // Auto-refresh every 5 seconds if session is active (for transcript updates)
         {% if session.status == 'active' %}
         setInterval(() => {
             location.reload();

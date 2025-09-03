@@ -282,9 +282,22 @@ def register_socket_events(socketio):
             logger.info("✅ Session started - transcription handled by Electron app", session_id=session_id)
             
             logger.info("Session started via WebSocket", session_id=session_id)
+            
+            # Send only serializable data back to Electron (avoid complex nested objects)
+            session_response = {
+                'session_id': session_id,
+                'status': sessions[session_id]['status'],
+                'started_at': sessions[session_id]['started_at'],
+                'type': sessions[session_id].get('type', 'manual'),
+                'transcript_count': sessions[session_id].get('transcript_count', 0),
+                'word_count': sessions[session_id].get('word_count', 0),
+                'oauth_token': sessions[session_id].get('oauth_token'),
+                'assemblyai_active': sessions[session_id].get('assemblyai_active', False)
+            }
+            
             emit('session_started', {
                 'success': True,
-                'session': sessions[session_id]
+                'session': session_response
             })
             
         except Exception as e:
@@ -384,6 +397,36 @@ def register_socket_events(socketio):
                 'error': str(e)
             })
     
+    @socketio.on('manual_summary')
+    def handle_manual_summary(data):
+        """Handle manual summary generation request"""
+        try:
+            session_id = data.get('session_id')
+            
+            if not session_id:
+                logger.error("Manual summary missing session ID")
+                emit('summary_error', {'error': 'Session ID required'})
+                return
+            
+            logger.info("Manual summary requested", session_id=session_id, client_id=request.sid)
+            
+            # Get current final transcript count for logging
+            if session_id in active_sessions:
+                final_count = sum(1 for t in active_sessions[session_id].get('transcripts', []) if t.get('is_final', False))
+            else:
+                final_count = 0
+            
+            # Call the same summary function used by auto-trigger
+            trigger_meeting_summary(session_id, final_count)
+            
+        except Exception as e:
+            logger.error("Error handling manual summary", error=str(e), session_id=data.get('session_id'))
+            emit('summary_error', {
+                'session_id': data.get('session_id'),
+                'error': f'Manual summary failed: {str(e)}',
+                'timestamp': datetime.datetime.utcnow().isoformat()
+            })
+    
     @socketio.on('error')
     def handle_error(data):
         """Handle client-side errors"""
@@ -428,59 +471,82 @@ def trigger_meeting_summary(session_id, final_count):
         
         logger.info("Generating meeting summary", session_id=session_id, transcript_length=len(transcript_text), final_count=final_count)
         
-        # Call the Models API endpoint
-        import requests
-        from flask import current_app
-        
-        # Use internal API call to our own summary endpoint
-        try:
-            with current_app.test_request_context():
-                from ..api.insights import generate_summary
-                from flask import request as flask_request
-                
-                # Create a mock request with the required data
-                import json
-                from werkzeug.test import EnvironBuilder
-                
-                builder = EnvironBuilder(
-                    method='POST',
-                    data=json.dumps({
-                        'session_id': session_id,
-                        'transcript_text': transcript_text
-                    }),
-                    content_type='application/json'
-                )
-                
-                with current_app.test_request_context(environ_base=builder.get_environ()):
-                    response = generate_summary()
-                    
-                    if hasattr(response, 'status_code') and response.status_code == 200:
-                        logger.info("Meeting summary generated successfully", session_id=session_id, final_count=final_count)
-                        
-                        # Broadcast summary update to clients
-                        emit('summary_generated', {
-                            'session_id': session_id,
-                            'final_count': final_count,
-                            'timestamp': datetime.datetime.utcnow().isoformat(),
-                            'message': f'Meeting summary generated after {final_count} final transcripts'
-                        }, room=session_id)
-                        
-                    else:
-                        logger.error("Meeting summary generation failed", session_id=session_id, response=str(response))
-                        
-        except Exception as api_error:
-            logger.error("Error calling Models API for summary", session_id=session_id, error=str(api_error))
+        # Get JWT token from WebSocket session (not Flask session)
+        from .. import sessions
+        if session_id not in sessions:
+            logger.error("Session not found in sessions dict for JWT token", session_id=session_id)
+            return
             
-            # Broadcast error to clients
+        access_token = sessions[session_id].get('oauth_token')
+        if not access_token:
+            logger.error("No OAuth token found for session", session_id=session_id)
             emit('summary_error', {
                 'session_id': session_id,
                 'final_count': final_count,
-                'error': str(api_error),
+                'error': 'No OAuth token available for Models API',
+                'timestamp': datetime.datetime.utcnow().isoformat()
+            }, room=session_id)
+            return
+        
+        # Direct Salesforce Models API call
+        import requests
+        instance_url = 'https://storm-65b5252966fd52.my.salesforce.com'
+        models_url = f"{instance_url}/services/data/v58.0/sobjects/Models__c"
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {
+            'Session_Type__c': 'Meeting Summary',
+            'Input_Text__c': transcript_text,
+            'Session_ID__c': session_id
+        }
+        
+        try:
+            logger.info("Calling Salesforce Models API", session_id=session_id, url=models_url)
+            response = requests.post(models_url, headers=headers, json=payload, timeout=30)
+            
+            if response.status_code == 200 or response.status_code == 201:
+                result = response.json()
+                logger.info("Meeting summary generated successfully", session_id=session_id, final_count=final_count, models_id=result.get('id'))
+                
+                # Broadcast summary update to clients
+                emit('summary_generated', {
+                    'session_id': session_id,
+                    'final_count': final_count,
+                    'summary_data': result,
+                    'timestamp': datetime.datetime.utcnow().isoformat(),
+                    'message': f'Meeting summary generated after {final_count} final transcripts'
+                }, room=session_id)
+                
+            else:
+                logger.error("Salesforce Models API call failed", session_id=session_id, status_code=response.status_code, response_text=response.text)
+                emit('summary_error', {
+                    'session_id': session_id,
+                    'final_count': final_count,
+                    'error': f'Models API returned {response.status_code}: {response.text}',
+                    'timestamp': datetime.datetime.utcnow().isoformat()
+                }, room=session_id)
+                
+        except requests.exceptions.RequestException as api_error:
+            logger.error("Error calling Salesforce Models API", session_id=session_id, error=str(api_error))
+            emit('summary_error', {
+                'session_id': session_id,
+                'final_count': final_count,
+                'error': f'API request failed: {str(api_error)}',
                 'timestamp': datetime.datetime.utcnow().isoformat()
             }, room=session_id)
         
     except Exception as e:
         logger.error("Error triggering meeting summary", session_id=session_id, error=str(e))
+        emit('summary_error', {
+            'session_id': session_id,
+            'final_count': final_count,
+            'error': f'Summary generation failed: {str(e)}',
+            'timestamp': datetime.datetime.utcnow().isoformat()
+        }, room=session_id)
 
 # Import required modules for the socket service
 import datetime
