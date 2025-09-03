@@ -365,9 +365,30 @@ def register_socket_events(socketio):
                 logger.warning("Deepgram manager not available via WebSocket", session_id=session_id)
             
             logger.info("Session started via WebSocket", session_id=session_id)
+            
+            # Create a lightweight response that includes context variables but avoids serialization issues
+            session_data = sessions[session_id]
+            lightweight_session = {
+                'session_id': session_data['session_id'],
+                'status': session_data['status'],
+                'created_at': session_data['created_at'],
+                'started_at': session_data.get('started_at'),
+                'type': session_data.get('type'),
+                'transcript_count': session_data.get('transcript_count', 0),
+                'word_count': session_data.get('word_count', 0),
+                'deepgram_active': session_data.get('deepgram_active', False),
+                'meeting_info': session_data.get('meeting_info', {}),
+                # Keep the context variables for Electron
+                'meeting_brief': session_data.get('meeting_brief', ''),
+                'competitive_intelligence': session_data.get('competitive_intelligence', ''),
+                'agent_capabilities': session_data.get('agent_capabilities', ''),
+                # Include client_id for WebSocket routing
+                'client_id': session_data.get('client_id')
+            }
+            
             emit('session_started', {
                 'success': True,
-                'session': sessions[session_id]
+                'session': lightweight_session
             })
             
         except Exception as e:
@@ -417,9 +438,32 @@ def register_socket_events(socketio):
                     logger.error("Error ending Deepgram session via WebSocket", error=str(e), session_id=session_id)
             
             logger.info("Session ended via WebSocket", session_id=session_id)
+            
+            # Create a lightweight response for session_ended to avoid serialization issues
+            session_data = sessions[session_id]
+            lightweight_session = {
+                'session_id': session_data['session_id'],
+                'status': session_data['status'],
+                'created_at': session_data['created_at'],
+                'started_at': session_data.get('started_at'),
+                'ended_at': session_data.get('ended_at'),
+                'duration': session_data.get('duration'),
+                'type': session_data.get('type'),
+                'transcript_count': session_data.get('transcript_count', 0),
+                'word_count': session_data.get('word_count', 0),
+                'deepgram_active': session_data.get('deepgram_active', False),
+                'meeting_info': session_data.get('meeting_info', {}),
+                # Keep the context variables for Electron
+                'meeting_brief': session_data.get('meeting_brief', ''),
+                'competitive_intelligence': session_data.get('competitive_intelligence', ''),
+                'agent_capabilities': session_data.get('agent_capabilities', ''),
+                # Include client_id for WebSocket routing
+                'client_id': session_data.get('client_id')
+            }
+            
             emit('session_ended', {
                 'success': True,
-                'session': sessions[session_id]
+                'session': lightweight_session
             })
             
         except Exception as e:
