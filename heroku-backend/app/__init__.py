@@ -62,7 +62,20 @@ def create_app():
     
     @app.route('/sessions/<session_id>')
     def session_detail(session_id):
-        return render_template('session_detail.html', session_id=session_id)
+        # Get session data from active sessions
+        session_data = sessions.get(session_id)
+        if not session_data:
+            # Create a minimal session object if not found
+            session_data = {
+                'session_id': session_id,
+                'status': 'unknown',
+                'transcript_count': 0,
+                'word_count': 0,
+                'duration': 0,
+                'deepgram_active': False,
+                'transcripts': []
+            }
+        return render_template('session_detail.html', session=session_data)
     
     @app.route('/processing')
     def session_processing():
