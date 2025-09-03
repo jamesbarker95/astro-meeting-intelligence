@@ -250,9 +250,19 @@ def register_socket_events(socketio):
             sessions[session_id] = session_data
             
             logger.info("Session created via WebSocket", session_id=session_id)
+            # Send only serializable data back to Electron (avoid complex nested objects)
+            session_response = {
+                'session_id': session_id,
+                'status': session_data['status'],
+                'created_at': session_data['created_at'],
+                'type': session_data.get('type', 'manual'),
+                'transcript_count': session_data.get('transcript_count', 0),
+                'word_count': session_data.get('word_count', 0)
+            }
+            
             emit('session_created', {
                 'success': True,
-                'session': session_data
+                'session': session_response
             })
             
         except Exception as e:
