@@ -37,7 +37,7 @@ def create_app():
     CORS(app, resources={r"/api/*": {"origins": "*"}})
     
     # Configure Flask-SocketIO
-    socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
+    socketio = SocketIO(app, cors_allowed_origins="*", logger=False, engineio_logger=False)
     
     # Register blueprints
     from .api.sessions import sessions_bp

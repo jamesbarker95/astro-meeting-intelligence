@@ -275,6 +275,7 @@ def register_socket_events(socketio):
     @socketio.on('start_session')
     def handle_start_session(data):
         """Handle session start from WebSocket"""
+        session_id = None
         try:
             session_id = data.get('session_id')
             logger.info("Starting session via WebSocket", session_id=session_id, client_id=request.sid)
@@ -282,39 +283,56 @@ def register_socket_events(socketio):
             from .. import sessions
             
             if session_id not in sessions:
-                raise Exception("Session not found")
+                logger.error("Session not found", session_id=session_id)
+                emit('session_started', {
+                    'success': False,
+                    'error': 'Session not found'
+                })
+                return
             
+            # Update session state
             sessions[session_id]['status'] = 'active'
             sessions[session_id]['started_at'] = datetime.datetime.utcnow().isoformat()
-            
-            # AssemblyAI transcription now handled in Electron desktop app
             sessions[session_id]['assemblyai_active'] = False  # Always false since moved to Electron
-            logger.info("✅ Session started - transcription handled by Electron app", session_id=session_id)
             
-            logger.info("Session started via WebSocket", session_id=session_id)
+            logger.info("Session started successfully", session_id=session_id)
             
-            # Send only serializable data back to Electron (avoid complex nested objects)
+            # Create clean, guaranteed serializable response
             session_response = {
-                'session_id': session_id,
-                'status': sessions[session_id]['status'],
-                'started_at': sessions[session_id]['started_at'],
-                'type': sessions[session_id].get('type', 'manual'),
-                'transcript_count': sessions[session_id].get('transcript_count', 0),
-                'word_count': sessions[session_id].get('word_count', 0),
-                'assemblyai_active': sessions[session_id].get('assemblyai_active', False)
+                'session_id': str(session_id),
+                'status': str(sessions[session_id]['status']),
+                'started_at': str(sessions[session_id]['started_at']),
+                'type': str(sessions[session_id].get('type', 'manual')),
+                'transcript_count': int(sessions[session_id].get('transcript_count', 0)),
+                'word_count': int(sessions[session_id].get('word_count', 0)),
+                'assemblyai_active': bool(sessions[session_id].get('assemblyai_active', False))
             }
             
-            emit('session_started', {
+            # Emit response with explicit serialization
+            response_data = {
                 'success': True,
                 'session': session_response
-            })
+            }
+            
+            logger.info("Emitting session_started response", session_id=session_id, response_keys=list(response_data.keys()))
+            emit('session_started', response_data)
+            logger.info("Session start response emitted successfully", session_id=session_id)
             
         except Exception as e:
-            logger.error("Error starting session via WebSocket", error=str(e))
-            emit('session_started', {
+            error_msg = str(e)
+            logger.error("Error starting session via WebSocket", session_id=session_id, error=error_msg)
+            
+            # Ensure error response is also clean
+            error_response = {
                 'success': False,
-                'error': str(e)
-            })
+                'error': error_msg
+            }
+            
+            try:
+                emit('session_started', error_response)
+                logger.info("Error response emitted successfully", session_id=session_id)
+            except Exception as emit_error:
+                logger.error("Failed to emit error response", session_id=session_id, emit_error=str(emit_error))
     
     @socketio.on('end_session')
     def handle_end_session(data):

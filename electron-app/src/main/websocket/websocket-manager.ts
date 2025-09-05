@@ -32,11 +32,24 @@ export class WebSocketManager {
   private pendingCallbacks: Map<string, { resolve: Function; reject: Function }> = new Map();
   private currentSessionId: string | null = null;
   private pendingOAuthToken: string | null = null;
+  private sessionStartInProgress: boolean = false;
+  private sessionState: 'none' | 'created' | 'starting' | 'active' | 'ended' = 'none';
   private authManager: AuthManager;
+  private audioManager: any = null; // Will be injected for AI insights
+  private mainWindow: Electron.BrowserWindow | null = null;
 
   constructor(events: WebSocketEvents, authManager: AuthManager) {
     this.events = events;
     this.authManager = authManager;
+  }
+
+  setMainWindow(mainWindow: Electron.BrowserWindow): void {
+    this.mainWindow = mainWindow;
+  }
+
+  setAudioManager(audioManager: any): void {
+    this.audioManager = audioManager;
+    console.log('🔗 WEBSOCKET MANAGER: Audio manager connected for AI insights');
   }
 
   public async connect(backendUrl: string): Promise<boolean> {
@@ -89,8 +102,11 @@ export class WebSocketManager {
         this.socket = null;
       }
       this.isConnected = false;
+      // Reset all session flags on manual disconnect
+      this.sessionStartInProgress = false;
+      this.sessionState = 'none';
       this.currentSessionId = null;
-      console.log('WebSocket disconnected');
+      console.log('WebSocket disconnected - all session flags reset');
       this.events.onDisconnect();
       return true;
     } catch (error) {
@@ -109,6 +125,11 @@ export class WebSocketManager {
     this.socket.on('disconnect', () => {
       console.log('WebSocket disconnected');
       this.isConnected = false;
+      // Reset all session flags on disconnect to ensure clean state
+      this.sessionStartInProgress = false;
+      this.sessionState = 'none';
+      this.currentSessionId = null;
+      console.log('WebSocketManager: Disconnect - all session flags reset');
       this.events.onDisconnect();
     });
 
@@ -129,11 +150,14 @@ export class WebSocketManager {
       
       if (response.success) {
         this.currentSessionId = response.session.session_id;
+        this.sessionState = 'created';
+        console.log('WebSocketManager: Session created, state:', this.sessionState);
         console.log('WebSocketManager: Forwarding full response to renderer:', response);
         // Send the FULL response to maintain the structure the renderer expects
         this.events.onSessionCreated(response);
       } else {
         console.error('WebSocketManager: Session creation failed:', response.error);
+        this.sessionState = 'none';
         this.events.onError(`Session creation failed: ${response.error}`);
       }
     });
@@ -141,8 +165,14 @@ export class WebSocketManager {
     this.socket.on('session_started', (response: any) => {
       console.log('Session started response:', response);
       if (response.success) {
+        this.sessionState = 'active';
+        this.sessionStartInProgress = false;
+        console.log('WebSocketManager: Session started successfully, state:', this.sessionState);
         this.events.onSessionStarted(response.session);
       } else {
+        this.sessionState = 'created'; // Reset to created state on failure
+        this.sessionStartInProgress = false;
+        console.log('WebSocketManager: Session start failed, state reset to:', this.sessionState);
         this.events.onError(`Session start failed: ${response.error}`);
       }
     });
@@ -151,8 +181,16 @@ export class WebSocketManager {
       console.log('Session ended response:', response);
       if (response.success) {
         this.currentSessionId = null;
+        // Reset session state flags when session ends successfully
+        this.sessionStartInProgress = false;
+        this.sessionState = 'none';
+        console.log('WebSocketManager: Session ended successfully, flags reset');
         this.events.onSessionEnded(response.session);
       } else {
+        // Also reset flags on session end failure to allow retry
+        this.sessionStartInProgress = false;
+        this.sessionState = 'none';
+        console.log('WebSocketManager: Session end failed, flags reset for retry');
         this.events.onError(`Session end failed: ${response.error}`);
       }
     });
@@ -163,7 +201,7 @@ export class WebSocketManager {
     });
   }
 
-  public createSession(contextData?: any): Promise<SessionData> {
+  public createSession(contextData?: any): Promise<any> {
     return new Promise(async (resolve, reject) => {
       if (!this.socket || !this.isConnected) {
         console.error('WebSocketManager: Cannot create session - WebSocket not connected');
@@ -206,8 +244,15 @@ export class WebSocketManager {
                 });
                 this.pendingOAuthToken = null; // Clear after sending
               }
+
+              // Set up AI Insights system (Agent API session and context)
+              this.setupAIInsights(session, contextData);
               
-              resolve(session);
+              resolve({
+                success: true,
+                sessionId: sessionId,
+                session: session
+              });
             } else {
               console.error('WebSocketManager: No session ID found in response. Response structure:', JSON.stringify(response, null, 2));
               reject(new Error('No session ID in response'));
@@ -262,38 +307,101 @@ export class WebSocketManager {
         reject(new Error('WebSocket not connected'));
         return;
       }
-      console.log('Starting session:', sessionId);
-      const callbackId = 'start_session_' + Date.now();
-      this.pendingCallbacks.set(callbackId, { resolve, reject });
+
+      // Check session state and prevent race conditions
+      if (this.sessionStartInProgress) {
+        console.log('WebSocketManager: Session start already in progress, rejecting duplicate call');
+        reject(new Error('Session start already in progress'));
+        return;
+      }
+
+      if (this.sessionState !== 'created') {
+        console.log(`WebSocketManager: Invalid session state for start: ${this.sessionState}`);
+        reject(new Error(`Cannot start session in state: ${this.sessionState}`));
+        return;
+      }
+      
+      // Mark session start as in progress
+      this.sessionStartInProgress = true;
+      this.sessionState = 'starting';
+      
+      // Wait a moment to ensure session is fully ready
       setTimeout(() => {
-        if (this.pendingCallbacks.has(callbackId)) {
-          this.pendingCallbacks.delete(callbackId);
-          reject(new Error('Session start timeout'));
+        if (!this.socket || !this.isConnected) {
+          this.sessionStartInProgress = false;
+          this.sessionState = 'created'; // Reset state
+          reject(new Error('WebSocket connection lost'));
+          return;
         }
-      }, 10000);
-      const handleSessionStarted = (response: any) => {
-        if (this.pendingCallbacks.has(callbackId)) {
-          this.pendingCallbacks.delete(callbackId);
-          this.socket?.off('session_started', handleSessionStarted);
-          if (response.success) {
-            // Handle different response structures
-            const session = response.session || response;
-            const sessionId = session.session_id || session.id || response.session_id || response.id;
-            
-            if (sessionId) {
-              this.currentSessionId = sessionId;
-              console.log('Session started with ID:', sessionId);
-              resolve(session);
-            } else {
-              reject(new Error('No session ID in response'));
-            }
-          } else {
-            reject(new Error(response.error || 'Failed to start session'));
+        
+        console.log('WebSocketManager: Starting session:', sessionId, 'State:', this.sessionState);
+        const callbackId = 'start_session_' + Date.now();
+        this.pendingCallbacks.set(callbackId, { resolve, reject });
+        
+        // Longer timeout for more stability
+        const timeoutId = setTimeout(() => {
+          if (this.pendingCallbacks.has(callbackId)) {
+            this.pendingCallbacks.delete(callbackId);
+            // Reset flags on timeout to allow retry
+            this.sessionStartInProgress = false;
+            this.sessionState = 'created';
+            console.log('WebSocketManager: Session start timeout, flags reset for retry');
+            reject(new Error('Session start timeout - no response from server'));
           }
-        }
-      };
-      this.socket.on('session_started', handleSessionStarted);
-      this.socket.emit('start_session', { session_id: sessionId });
+        }, 15000);
+        
+        const handleSessionStarted = (response: any) => {
+          console.log('WebSocketManager: Received session_started response:', response);
+          
+          if (this.pendingCallbacks.has(callbackId)) {
+            clearTimeout(timeoutId);
+            this.pendingCallbacks.delete(callbackId);
+            this.socket?.off('session_started', handleSessionStarted);
+            
+            if (response && response.success === true) {
+              // Handle different response structures
+              const session = response.session || response;
+              const sessionId = session.session_id || session.id || response.session_id || response.id;
+              
+              if (sessionId) {
+                this.currentSessionId = sessionId;
+                console.log('✅ Session started successfully with ID:', sessionId);
+                resolve(session);
+              } else {
+                console.error('❌ No session ID in successful response:', response);
+                reject(new Error('No session ID in response'));
+              }
+            } else {
+              const errorMsg = response?.error || 'Failed to start session';
+              console.error('❌ Session start failed:', errorMsg);
+              reject(new Error(errorMsg));
+            }
+          }
+        };
+        
+        // Add error handler for WebSocket errors during session start
+        const handleError = (error: any) => {
+          console.error('WebSocket error during session start:', error);
+          if (this.pendingCallbacks.has(callbackId)) {
+            clearTimeout(timeoutId);
+            this.pendingCallbacks.delete(callbackId);
+            this.socket?.off('session_started', handleSessionStarted);
+            this.socket?.off('error', handleError);
+            // Reset flags on WebSocket error to allow retry
+            this.sessionStartInProgress = false;
+            this.sessionState = 'created';
+            console.log('WebSocketManager: WebSocket error during session start, flags reset for retry');
+            reject(new Error(`WebSocket error: ${error}`));
+          }
+        };
+        
+        this.socket.on('session_started', handleSessionStarted);
+        this.socket.on('error', handleError);
+        
+        console.log('WebSocketManager: Emitting start_session event for:', sessionId);
+        this.socket.emit('start_session', { session_id: sessionId });
+        
+      }, 100); // Small delay to ensure connection stability
     });
   }
 
@@ -309,6 +417,10 @@ export class WebSocketManager {
       setTimeout(() => {
         if (this.pendingCallbacks.has(callbackId)) {
           this.pendingCallbacks.delete(callbackId);
+          // Reset flags on end session timeout to allow retry
+          this.sessionStartInProgress = false;
+          this.sessionState = 'none';
+          console.log('WebSocketManager: Session end timeout, flags reset for retry');
           reject(new Error('Session end timeout'));
         }
       }, 10000);
@@ -319,8 +431,16 @@ export class WebSocketManager {
           if (response.success) {
             // Handle different response structures
             const session = response.session || response;
+            // Reset session flags when ending session successfully
+            this.sessionStartInProgress = false;
+            this.sessionState = 'none';
+            console.log('WebSocketManager: Session ended via endSession call, flags reset');
             resolve(session);
           } else {
+            // Reset flags even on end session failure to allow retry
+            this.sessionStartInProgress = false;
+            this.sessionState = 'none';
+            console.log('WebSocketManager: Session end failed via endSession call, flags reset for retry');
             reject(new Error(response.error || 'Failed to end session'));
           }
         }
@@ -330,38 +450,8 @@ export class WebSocketManager {
     });
   }
 
-  public sendAudioChunk(audioData: string): Promise<boolean> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.isConnected) {
-        console.log('❌ WEBSOCKET: Cannot send audio - not connected');
-        reject(new Error('WebSocket not connected'));
-        return;
-      }
-      
-      if (!this.currentSessionId) {
-        console.log('❌ WEBSOCKET: Cannot send audio - no active session');
-        reject(new Error('No active session for audio transmission'));
-        return;
-      }
-
-      console.log('📡 WEBSOCKET: Sending audio chunk', {
-        sessionId: this.currentSessionId,
-        dataLength: audioData.length,
-        dataPreview: audioData.substring(0, 20) + '...',
-        socketConnected: this.isConnected
-      });
-      
-      this.socket.emit('audio_chunk', {
-        session_id: this.currentSessionId,
-        audio: audioData
-      });
-      
-      console.log('✅ WEBSOCKET: Audio chunk emitted successfully');
-      
-      // For audio chunks, we don't wait for acknowledgment
-      resolve(true);
-    });
-  }
+  // REMOVED: sendAudioChunk method - audio processing now handled entirely by AssemblyAI
+  // The Heroku backend's audio_chunk handler is deprecated and no longer needed
 
   public sendTranscript(transcriptData: any): Promise<boolean> {
     return new Promise((resolve, reject) => {
@@ -458,5 +548,124 @@ export class WebSocketManager {
       console.log('✅ WEBSOCKET: Meeting summary sent successfully');
       resolve(true);
     });
+  }
+
+  // Set up AI Insights directly with local context data (no Heroku needed)
+  public async setupAIInsightsDirectly(sessionId: string, contextData: any): Promise<void> {
+    try {
+      console.log('🤖 WEBSOCKET MANAGER: ===== SETTING UP AI INSIGHTS DIRECTLY =====');
+      console.log('🤖 WEBSOCKET MANAGER: AuthManager available:', !!this.authManager);
+      console.log('🤖 WEBSOCKET MANAGER: AudioManager available:', !!this.audioManager);
+      
+      if (!this.authManager || !this.audioManager) {
+        console.log('🤖 WEBSOCKET MANAGER: ❌ Missing dependencies, skipping AI insights setup');
+        console.log('🤖 WEBSOCKET MANAGER: AuthManager:', !!this.authManager, 'AudioManager:', !!this.audioManager);
+        return;
+      }
+
+      console.log('🤖 WEBSOCKET MANAGER: ✅ All dependencies available, proceeding with AI setup...');
+
+      // Use the rich contextData directly - no Heroku round-trip!
+      const sessionContext = {
+        sessionId: sessionId,
+        meetingBrief: contextData.meetingBrief,
+        competitiveIntelligence: contextData.competitiveIntelligence,
+        agentCapabilities: contextData.agentCapabilities
+      };
+      
+      console.log('🤖 WEBSOCKET MANAGER: Session context created with RICH DATA:', {
+        sessionId: sessionContext.sessionId,
+        meetingBriefLength: sessionContext.meetingBrief?.length || 0,
+        competitiveIntelligenceLength: sessionContext.competitiveIntelligence?.length || 0,
+        agentCapabilitiesLength: sessionContext.agentCapabilities?.length || 0
+      });
+
+      // Set session context on AudioManager
+      this.audioManager.setSessionContext(sessionContext);
+      
+      // Emit debug event for context setting
+      const debugEvent = {
+        sessionId: sessionContext.sessionId,
+        meetingBrief: sessionContext.meetingBrief,
+        competitiveIntelligence: sessionContext.competitiveIntelligence,
+        agentCapabilities: sessionContext.agentCapabilities
+      };
+      
+      // Send debug event to main process (similar to existing pattern)
+      console.log('🔧 MAIN: Received debug event context_set, routing to overlay manager:', debugEvent);
+
+      console.log('🤖 WEBSOCKET MANAGER: 🚀 Creating Agent API session...');
+      
+      // Create Agent API session with rich context
+      try {
+        await this.authManager.createAgentSession(sessionContext.meetingBrief, sessionContext.competitiveIntelligence);
+        console.log('🤖 WEBSOCKET MANAGER: ✅ Agent API session created successfully');
+      } catch (error) {
+        console.error('🤖 WEBSOCKET MANAGER: ❌ Failed to create Agent API session:', error);
+      }
+
+      console.log('🤖 WEBSOCKET MANAGER: ✅ AI insights system ready with RICH SALESFORCE DATA');
+    } catch (error) {
+      console.error('🤖 WEBSOCKET MANAGER: ❌ Error setting up AI insights directly:', error);
+    }
+  }
+
+  // Set up AI Insights system for the session (legacy Heroku method)
+  private async setupAIInsights(session: any, contextData: any): Promise<void> {
+    try {
+      console.log('🤖 WEBSOCKET MANAGER: ===== SETTING UP AI INSIGHTS SYSTEM =====');
+      console.log('🤖 WEBSOCKET MANAGER: AuthManager available:', !!this.authManager);
+      console.log('🤖 WEBSOCKET MANAGER: AudioManager available:', !!this.audioManager);
+      
+      if (!this.authManager || !this.audioManager) {
+        console.log('🤖 WEBSOCKET MANAGER: ❌ Missing dependencies, skipping AI insights setup');
+        console.log('🤖 WEBSOCKET MANAGER: AuthManager:', !!this.authManager, 'AudioManager:', !!this.audioManager);
+        return;
+      }
+
+      console.log('🤖 WEBSOCKET MANAGER: ✅ All dependencies available, proceeding with AI setup...');
+
+      // Define session context for AI insights - prioritize contextData over empty session data
+      const sessionContext = {
+        sessionId: session.session_id || session.id,
+        meetingBrief: contextData?.meetingBrief || session.meeting_brief || 'General meeting discussion and insights',
+        competitiveIntelligence: contextData?.competitiveIntelligence || session.competitive_intelligence || 'No competitive intelligence available',
+        agentCapabilities: contextData?.agentCapabilities || session.agent_capabilities || 'Basic AI assistance capabilities'
+      };
+      
+      console.log('🤖 WEBSOCKET MANAGER: Session context created:', {
+        sessionId: sessionContext.sessionId,
+        meetingBriefLength: sessionContext.meetingBrief?.length || 0,
+        competitiveIntelligenceLength: sessionContext.competitiveIntelligence?.length || 0,
+        agentCapabilitiesLength: sessionContext.agentCapabilities?.length || 0
+      });
+
+      // Set session context on AudioManager
+      this.audioManager.setSessionContext(sessionContext);
+      
+      // Emit debug event for context setting
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('debug:context_set', sessionContext);
+        
+        // Also send to overlay manager via custom debug handler
+        if ((this.mainWindow as any).sendDebugEvent) {
+          (this.mainWindow as any).sendDebugEvent('context_set', sessionContext);
+        }
+      }
+
+      // Create Agent API session with context variables
+      console.log('🤖 WEBSOCKET MANAGER: 🚀 Creating Agent API session...');
+      await this.authManager.createAgentSession(
+        sessionContext.competitiveIntelligence,
+        sessionContext.meetingBrief
+      );
+      console.log('🤖 WEBSOCKET MANAGER: ✅ Agent API session created successfully');
+
+      console.log('🤖 WEBSOCKET MANAGER: ✅ AI insights system ready');
+
+    } catch (error) {
+      console.error('🤖 WEBSOCKET MANAGER: Failed to set up AI insights system:', error);
+      // Don't throw - let the meeting continue without AI insights
+    }
   }
 }

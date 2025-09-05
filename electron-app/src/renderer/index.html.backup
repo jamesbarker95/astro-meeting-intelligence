@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astro - Meeting Intelligence</title>
+    
+    <!-- Immediate error handling before JavaScript loads -->
+    <script>
+        // Catch errors immediately
+        window.addEventListener('error', function(event) {
+            console.error('Early error caught:', event.error);
+            document.body.innerHTML = `
+                <div style="padding: 20px; text-align: center; font-family: Arial, sans-serif; background: white; min-height: 100vh;">
+                    <h2>Early JavaScript Error Detected</h2>
+                    <p><strong>Error:</strong> ${event.message}</p>
+                    <p><strong>File:</strong> ${event.filename}</p>
+                    <p><strong>Line:</strong> ${event.lineno}</p>
+                    <p>This error occurred before the main application could load.</p>
+                </div>
+            `;
+        });
+        
+        // Catch unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Early promise rejection:', event.reason);
+            document.body.innerHTML = `
+                <div style="padding: 20px; text-align: center; font-family: Arial, sans-serif; background: white; min-height: 100vh;">
+                    <h2>Early Promise Rejection</h2>
+                    <p><strong>Error:</strong> ${event.reason}</p>
+                    <p>This error occurred before the main application could load.</p>
+                </div>
+            `;
+        });
+        
+        // Test if electronAPI is available immediately
+        window.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                if (typeof window.electronAPI === 'undefined') {
+                    console.error('electronAPI not available after DOM load');
+                    document.body.innerHTML = `
+                        <div style="padding: 20px; text-align: center; font-family: Arial, sans-serif; background: white; min-height: 100vh;">
+                            <h2>Electron API Not Available</h2>
+                            <p>The electronAPI is not available after the DOM loaded.</p>
+                            <p>This usually means the preload script failed to load or execute.</p>
+                            <p>Available window properties: ${Object.keys(window).join(', ')}</p>
+                        </div>
+                    `;
+                } else {
+                    console.log('electronAPI is available:', Object.keys(window.electronAPI));
+                }
+            }, 1000); // Check after 1 second
+        });
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .logo {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+
+        .status-message {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .status-message.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            border: 1px solid #bbdefb;
+        }
+
+        .status-message.success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border: 1px solid #c8e6c9;
+        }
+
+        .status-message.warning {
+            background: #fff3e0;
+            color: #f57c00;
+            border: 1px solid #ffcc02;
+        }
+
+        .status-message.error {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ffcdd2;
+        }
+
+        .auth-section {
+            margin-bottom: 30px;
+        }
+
+        .auth-status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 10px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+        }
+
+        .status-text {
+            font-weight: 500;
+        }
+
+        .status-text.connected {
+            color: #2e7d32;
+        }
+
+        .status-text.disconnected {
+            color: #c62828;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin: 5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .auth-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .ready-section {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .events-section {
+            display: none;
+            margin-top: 20px;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .section-divider {
+            text-align: center;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .section-divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: #dee2e6;
+        }
+
+        .section-divider span {
+            background: #fff;
+            padding: 0 15px;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .events-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #e9ecef;
+            border-top: 2px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .events-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .event-item {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            transition: all 0.2s;
+        }
+
+        .event-item:hover {
+            border-color: #007bff;
+            box-shadow: 0 2px 4px rgba(0,123,255,0.1);
+        }
+
+        .event-title {
+            font-weight: 600;
+            color: #212529;
+            margin-bottom: 4px;
+        }
+
+        .event-time {
+            color: #007bff;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .event-description {
+            color: #6c757d;
+            font-size: 14px;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+
+        .event-session-container {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+        }
+
+        .event-session-status {
+            font-weight: 600;
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+
+        .event-transcript {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .btn-event:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .event-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .btn-event {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+
+        .btn-event:hover {
+            background: #0056b3;
+        }
+
+        .events-error {
+            text-align: center;
+            color: #dc3545;
+            padding: 20px;
+        }
+
+        .audio-setup-section {
+            display: block;
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 1px solid #e9ecef;
+        }
+
+        .audio-controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+
+
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        /* Ensure buttons are clickable */
+        .btn {
+            position: relative;
+            z-index: 10;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        .auth-buttons {
+            position: relative;
+            z-index: 10;
+            pointer-events: auto;
+        }
+
+        .audio-controls {
+            position: relative;
+            z-index: 10;
+            pointer-events: auto;
+        }
+
+        /* Transcript styling */
+        .transcript-line {
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            line-height: 1.4;
+        }
+
+        .transcript-line.final {
+            background: #f8f9fa;
+            border-left: 3px solid #28a745;
+        }
+
+        .transcript-line.interim {
+            background: #fff3cd;
+            border-left: 3px solid #ffc107;
+            opacity: 0.8;
+        }
+
+        .timestamp {
+            color: #6c757d;
+            font-size: 0.85em;
+            margin-right: 8px;
+        }
+
+        .transcript-text.final-text {
+            color: #212529;
+            font-weight: 500;
+        }
+
+        .transcript-text.interim-text {
+            color: #856404;
+            font-style: italic;
+        }
+
+        .transcript-meta {
+            color: #6c757d;
+            font-size: 0.8em;
+            margin-left: 8px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+                margin: 20px;
+            }
+
+            .auth-buttons {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                margin: 5px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">Astro</div>
+        <div class="subtitle">Meeting Intelligence Platform</div>
+        
+        <div id="status-message" class="status-message info">
+            Initializing...
+        </div>
+
+        <!-- Authentication Section -->
+        <div class="auth-section">
+            <div class="auth-status">
+                <span>Salesforce</span>
+                <span id="salesforce-status-text" class="status-text disconnected">✗ Not connected</span>
+            </div>
+            <div class="auth-status">
+                <span>Slack</span>
+                <span id="slack-status-text" class="status-text disconnected">✗ Not connected</span>
+            </div>
+        </div>
+
+        <!-- Auth Buttons -->
+        <div id="auth-buttons" class="auth-buttons">
+            <button id="salesforce-btn" class="btn btn-primary">
+                Sign in to Salesforce
+            </button>
+            <button id="slack-btn" class="btn btn-success">
+                Sign in to Slack
+            </button>
+        </div>
+
+        <!-- Audio Controls Section -->
+        <div id="audio-controls-section" class="audio-setup-section">
+            <h3>Audio Capture</h3>
+            <div class="audio-controls">
+                <button id="audio-capture-btn" class="btn btn-primary">
+                    Start Audio Capture
+                </button>
+                <button id="audio-stop-btn" class="btn btn-danger hidden">
+                    Stop Audio Capture
+                </button>
+            </div>
+        </div>
+
+
+
+        <!-- Ready Section -->
+        <div id="ready-section" class="ready-section">
+            <h3>Ready to Start Meeting</h3>
+            <div class="audio-controls">
+                <button id="start-session-btn" class="btn btn-success">
+                    Start Session
+                </button>
+                <button id="end-session-btn" class="btn btn-danger hidden">
+                    End Session
+                </button>
+            </div>
+        </div>
+
+        <!-- Events Section -->
+        <div id="events-section" class="events-section hidden">
+            <div class="section-divider">
+                <span>OR</span>
+            </div>
+            <h3>📅 Today's Events</h3>
+            <div id="events-loading" class="events-loading">
+                <div class="loading-spinner"></div>
+                <span>Loading your calendar events...</span>
+            </div>
+            <div id="events-container" class="events-container">
+                <!-- Events will be populated here -->
+            </div>
+            <div id="events-error" class="events-error hidden">
+                <p>Unable to load calendar events. You can still start a manual session above.</p>
+            </div>
+        </div>
+
+        <!-- Transcript Section -->
+        <div id="transcript-section" class="audio-setup-section hidden">
+            <h3>Live Transcript</h3>
+            <div id="transcript-container" style="max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 14px;">
+                <div id="transcript-content">
+                    <!-- Transcript lines will appear here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Insights Debug Panel -->
+        <div id="ai-debug-section" class="audio-setup-section">
+            <h3>🤖 AI Insights Debug</h3>
+            <div class="debug-tabs" style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <button class="debug-tab active" data-tab="models" style="padding: 8px 16px; border: 1px solid #ddd; background: #007bff; color: white; border-radius: 4px; cursor: pointer;">Models API</button>
+                <button class="debug-tab" data-tab="agent" style="padding: 8px 16px; border: 1px solid #ddd; background: #f8f9fa; color: #333; border-radius: 4px; cursor: pointer;">Agent API</button>
+                <button class="debug-tab" data-tab="context" style="padding: 8px 16px; border: 1px solid #ddd; background: #f8f9fa; color: #333; border-radius: 4px; cursor: pointer;">Context</button>
+                <button class="debug-tab" data-tab="pipeline" style="padding: 8px 16px; border: 1px solid #ddd; background: #f8f9fa; color: #333; border-radius: 4px; cursor: pointer;">Pipeline</button>
+            </div>
+            
+            <div id="models-debug" class="debug-content" style="display: block;">
+                <h4>Models API (Relevancy Gate)</h4>
+                <div id="models-responses" class="debug-log" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">
+                    <div style="color: #666;">Models API responses will appear here...</div>
+                </div>
+            </div>
+            
+            <div id="agent-debug" class="debug-content" style="display: none;">
+                <h4>Agent API Status</h4>
+                <div id="agent-status" class="debug-status" style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin-bottom: 10px; font-family: monospace; font-size: 12px;">
+                    <div>Session ID: <span id="agent-session-id" style="font-weight: bold; color: #dc3545;">Not created</span></div>
+                    <div>Sequence ID: <span id="agent-sequence-id" style="font-weight: bold;">0</span></div>
+                    <div>Last Response: <span id="agent-last-response" style="font-weight: bold; color: #666;">None</span></div>
+                </div>
+                <div id="agent-responses" class="debug-log" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">
+                    <div style="color: #666;">Agent API responses will appear here...</div>
+                </div>
+            </div>
+            
+            <div id="context-debug" class="debug-content" style="display: none;">
+                <h4>Session Context</h4>
+                <div id="context-data" class="debug-context" style="max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">
+                    <div style="color: #666;">Session context will appear here...</div>
+                </div>
+            </div>
+            
+            <div id="pipeline-debug" class="debug-content" style="display: none;">
+                <h4>AI Pipeline Status</h4>
+                <div id="pipeline-status" class="debug-pipeline" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">
+                    <div style="color: #666;">Pipeline status will appear here...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

@@ -91,10 +91,15 @@ export class AuthManager {
   private oauthServer: https.Server | null = null;
   private pkceChallenges: Map<string, PKCEChallenge> = new Map();
   private storage = new SimpleStorage();
+  private mainWindow: Electron.BrowserWindow | null = null;
 
   constructor() {
     this.initializeSettings();
     this.startOAuthServer();
+  }
+
+  setMainWindow(mainWindow: Electron.BrowserWindow): void {
+    this.mainWindow = mainWindow;
   }
 
   private async initializeSettings(): Promise<void> {
@@ -527,6 +532,7 @@ export class AuthManager {
         return [];
       }
 
+      // User ID extracted for potential future use
       console.log('🔍 MAIN PROCESS: ✅ Extracted User ID:', userId);
       console.log('🔍 MAIN PROCESS: 🚀 Calling Salesforce flow with User ID:', userId);
 
@@ -660,7 +666,15 @@ export class AuthManager {
    */
   private parseEventString(eventStr: string): SalesforceEvent | null {
     try {
-      // New parsing logic for AstroIsolate_ prefix format
+      console.log('🔍 Parsing event string with new delimiter format...');
+      
+      // Check if this is the new delimiter format
+      if (eventStr.includes('||EVENT_START||') && eventStr.includes('||EVENT_END||')) {
+        return this.parseDelimitedEventString(eventStr);
+      }
+      
+      // Fallback to old parsing logic for backward compatibility
+      console.log('🔍 Using legacy parsing format...');
       const event: Partial<SalesforceEvent> = {};
       
       // Extract fields using AstroIsolate_ prefixes
@@ -700,6 +714,93 @@ export class AuthManager {
       
     } catch (error) {
       console.error('Error parsing event string:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Parse event string with new delimiter format
+   */
+  private parseDelimitedEventString(eventStr: string): SalesforceEvent | null {
+    try {
+      console.log('🔍 Parsing delimited event format...');
+      
+      // Extract the content between EVENT_START and EVENT_END
+      const eventMatch = eventStr.match(/\|\|EVENT_START\|\|([\s\S]*?)\|\|EVENT_END\|\|/);
+      if (!eventMatch || !eventMatch[1]) {
+        console.log('⚠️ No EVENT_START/EVENT_END delimiters found');
+        return null;
+      }
+      
+      const eventContent = eventMatch[1];
+      const event: Partial<SalesforceEvent> = {};
+      
+      // Extract basic fields using AstroIsolate_ prefixes (before the first delimiter)
+      const extractBasicField = (fieldName: string): string => {
+        const pattern = new RegExp(`AstroIsolate_${fieldName}:\\s*([^|]*?)(?=\\s*(?:AstroIsolate_|\\|\\|))`, 'i');
+        const match = eventContent.match(pattern);
+        return match && match[1] ? match[1].trim() : '';
+      };
+      
+      // Extract delimited content sections
+      const extractDelimitedContent = (startDelimiter: string, endDelimiter: string): string => {
+        const pattern = new RegExp(`\\|\\|${startDelimiter}\\|\\|([\\s\\S]*?)\\|\\|${endDelimiter}\\|\\|`, 'i');
+        const match = eventContent.match(pattern);
+        return match && match[1] ? match[1].trim() : '';
+      };
+      
+      // Extract basic event fields
+      event.Event_Id = extractBasicField('Event_Id');
+      event.Title = extractBasicField('Title');
+      event.Start = extractBasicField('Start');
+      event.End = extractBasicField('End');
+      event.Description = extractBasicField('Description');
+      event.RelatedToId = extractBasicField('RelatedToId');
+      
+      // Extract delimited content sections
+      event.Meeting_Brief = extractDelimitedContent('MEETING_BRIEF_START', 'MEETING_BRIEF_END');
+      event.Competitive_Intelligence = extractDelimitedContent('COMPETITIVE_INSIGHTS_START', 'COMPETITIVE_INSIGHTS_END');
+      event.Agent_Capabilities = extractDelimitedContent('AGENT_CAPABILITIES_START', 'AGENT_CAPABILITIES_END');
+      
+      console.log('🔍 Parsed event fields:', {
+        Event_Id: event.Event_Id,
+        Title: event.Title,
+        Start: event.Start,
+        End: event.End,
+        Description: event.Description,
+        RelatedToId: event.RelatedToId,
+        hasMeetingBrief: !!(event.Meeting_Brief && event.Meeting_Brief.length > 0),
+        hasCompetitiveIntelligence: !!(event.Competitive_Intelligence && event.Competitive_Intelligence.length > 0),
+        hasAgentCapabilities: !!(event.Agent_Capabilities && event.Agent_Capabilities.length > 0),
+        meetingBriefLength: event.Meeting_Brief?.length || 0,
+        competitiveIntelligenceLength: event.Competitive_Intelligence?.length || 0,
+        agentCapabilitiesLength: event.Agent_Capabilities?.length || 0
+      });
+      
+      // Validate required fields
+      if (event.Event_Id && event.Title && event.RelatedToId) {
+        return {
+          Event_Id: event.Event_Id,
+          Title: event.Title,
+          Start: event.Start || '',
+          End: event.End || '',
+          Description: event.Description || '',
+          RelatedToId: event.RelatedToId,
+          Meeting_Brief: event.Meeting_Brief || '',
+          Competitive_Intelligence: event.Competitive_Intelligence || '',
+          Agent_Capabilities: event.Agent_Capabilities || ''
+        };
+      }
+      
+      console.log('⚠️ Missing required fields in delimited event:', {
+        Event_Id: event.Event_Id,
+        Title: event.Title,
+        RelatedToId: event.RelatedToId
+      });
+      return null;
+      
+    } catch (error) {
+      console.error('Error parsing delimited event string:', error);
       return null;
     }
   }
@@ -806,6 +907,21 @@ export class AuthManager {
   private modelsToken: string | null = null;
   private modelsTokenExpiry: number = 0;
 
+  // Agent API properties
+  private agentSessionId: string | null = null;
+  private agentSequenceId: number = 0;
+  private readonly agentId = '0XxHo000000yTfyKAE';
+  private agentRequestInProgress: boolean = false; // Prevent concurrent requests
+  
+  // Agent API token management (separate from Models API)
+  private agentToken: string | null = null;
+  private agentTokenExpiry: number = 0;
+  
+  // Agent API credentials (separate from Models API)
+  private readonly agentConsumerKey = '3MVG9Rr0EZ2YOVMa1kkbcICIjiC17_rf4HQqbZdWqKpc3EzRMpawcYwU03cfLAtJcNz2qjYjjZWvcMMNxV8pi';
+  private readonly agentConsumerSecret = '45D658407D107DF95C6FCCBF117604DD1D625D7D4B31AD1D1858E4AEA5141F47';
+  private readonly agentDomain = 'storm-65b5252966fd52.my.salesforce.com';
+
   private async ensureModelsToken(): Promise<void> {
     if (this.modelsToken && Date.now() < this.modelsTokenExpiry - 60000) {
       return; // Token still valid
@@ -848,22 +964,77 @@ export class AuthManager {
     console.log('🧠 AUTH MANAGER: ✅ Models API token obtained successfully');
   }
 
-  public async generateMeetingSummary(): Promise<any> {
+  private async ensureAgentToken(): Promise<void> {
+    if (this.agentToken && Date.now() < this.agentTokenExpiry - 60000) {
+      return; // Token still valid
+    }
+
+    console.log('🤖 AUTH MANAGER: Getting new Agent API token...');
+    
+    const tokenUrl = `https://${this.agentDomain}/services/oauth2/token`;
+    const tokenData = new URLSearchParams({
+      'grant_type': 'client_credentials',
+      'client_id': this.agentConsumerKey,
+      'client_secret': this.agentConsumerSecret
+    });
+
+    const tokenResponse = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: tokenData
+    });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      console.error('🤖 AUTH MANAGER: Agent token request failed:', errorText);
+      throw new Error(`Failed to get Agent API token: ${tokenResponse.status} ${tokenResponse.statusText}`);
+    }
+
+    const tokenResult = await tokenResponse.json() as any;
+    this.agentToken = tokenResult.access_token;
+    
+    // Set expiry (default 30 minutes if not provided)
+    const expiresIn = tokenResult.expires_in || 1800;
+    this.agentTokenExpiry = Date.now() + (expiresIn * 1000);
+    
+    console.log('🤖 AUTH MANAGER: ✅ Agent API token obtained successfully');
+  }
+
+  public async generateMeetingSummary(
+    batchText: string,
+    meetingBrief?: string,
+    competitiveIntelligence?: string,
+    previousSummary?: string
+  ): Promise<any> {
     try {
       console.log('🧠 AUTH MANAGER: Starting meeting summary generation...');
       
       // Ensure we have a valid Models API token
       await this.ensureModelsToken();
 
-      // For now, we'll use a placeholder for transcripts
-      // In a real implementation, we'd collect transcripts from the current session
-      const transcripts = [
-        { text: "Sample transcript for meeting summary generation", timestamp: new Date().toISOString() }
-      ];
+      // Use the provided batch text directly
+      const transcriptText = batchText || "Sample transcript for meeting summary generation";
+      
+      console.log(`🧠 AUTH MANAGER: Using batch text for summary generation (${transcriptText.length} characters)`);
 
-      // Create a prompt for the Models API
-      const transcriptText = transcripts.map(t => t.text).join(' ');
-      const prompt = `Please generate a comprehensive meeting summary from the following transcript:
+      // Create a comprehensive prompt with context
+      let prompt = '';
+      
+      if (meetingBrief) {
+        prompt += `Meeting Brief: ${meetingBrief}\n\n`;
+      }
+      
+      if (competitiveIntelligence) {
+        prompt += `Competitive Intelligence: ${competitiveIntelligence}\n\n`;
+      }
+      
+      if (previousSummary) {
+        prompt += `Previous Summary Context: ${previousSummary}\n\n`;
+      }
+      
+      prompt += `Please generate a comprehensive meeting summary from the following transcript:
 
 "${transcriptText}"
 
@@ -918,22 +1089,15 @@ Format the response as a structured summary.`;
       // Extract the generated text from the Models API response
       const generatedText = (result as any)?.generation?.generatedText || 'No summary generated';
       
-      // Parse the generated text to extract structured data
-      // For now, we'll use the full text as summary and create placeholder structured data
-      // In a more sophisticated implementation, we could prompt the AI to return JSON
-      const summaryData = {
-        summary: generatedText,
-        actionItems: this.extractActionItems(generatedText),
-        questions: this.extractQuestions(generatedText),
-        nextSteps: this.extractNextSteps(generatedText)
-      };
-
-      // Return structured summary data
+      // Return the raw Models API response as the summary (simplified)
       return {
         id: (result as any)?.id || 'unknown',
-        summary: summaryData,
+        summary: generatedText, // Just return the raw text from Models API
         timestamp: new Date().toISOString(),
-        finalTranscriptCount: 5 // This would come from the actual transcript count
+        batchTextLength: transcriptText.length,
+        hasMeetingBrief: !!meetingBrief,
+        hasCompetitiveIntelligence: !!competitiveIntelligence,
+        hasPreviousSummary: !!previousSummary
       };
 
     } catch (error) {
@@ -942,66 +1106,449 @@ Format the response as a structured summary.`;
     }
   }
 
-  // Helper methods to extract structured data from AI-generated text
-  private extractActionItems(text: string): string[] {
-    const actionItems: string[] = [];
-    const lines = text.split('\n');
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]?.trim() || '';
-      if (line.toLowerCase().includes('action item') || 
-          line.toLowerCase().includes('to do') ||
-          line.toLowerCase().includes('follow up') ||
-          (line.match(/^\d+\./) && line.toLowerCase().includes('action'))) {
-        // Extract action items from numbered lists or bullet points
-        const actionText = line.replace(/^\d+\./, '').replace(/^[-•*]/, '').trim();
-        if (actionText.length > 0) {
-          actionItems.push(actionText);
+  // Models API Session 2: Relevancy Gate for AI Insights (More Flexible for Testing)
+  public async checkTranscriptRelevancy(transcriptLine: string, meetingBrief: string, competitiveIntelligence: string, agentCapabilities: string): Promise<string> {
+    try {
+      console.log('🔍 AUTH MANAGER: Checking transcript relevancy for AI insights...');
+      
+      // Emit debug event for Models API call
+      this.mainWindow?.webContents.send('debug:models_api_call', {
+        transcript: transcriptLine,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Also send to overlay manager via custom debug handler
+      if (this.mainWindow && (this.mainWindow as any).sendDebugEvent) {
+        (this.mainWindow as any).sendDebugEvent('models_api_call', {
+          transcript: transcriptLine,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      // Ensure we have a valid Models API token
+      await this.ensureModelsToken();
+
+      // Use chat format with system context for efficiency
+      const systemContext = `You are an intelligent relevancy gate for an AI meeting assistant. Your job is to filter irrelevant content and generate context-aware requests for relevant business discussions.
+
+MEETING CONTEXT:
+Meeting Brief: ${meetingBrief}
+
+Competitive Intelligence: ${competitiveIntelligence}
+
+Agent Capabilities: ${agentCapabilities}
+
+INSTRUCTIONS:
+STEP 1 - RELEVANCY FILTER:
+ONLY respond with "Waiting_For_More_Context" if the transcript is:
+- Very short (1-2 words like "um", "okay", "yes")
+- Clearly personal/casual conversation unrelated to business
+- Audio artifacts, unclear speech, or meaningless sounds
+- Contains no business value whatsoever
+
+STEP 2 - IF RELEVANT, GENERATE CONTEXT-AWARE REQUEST:
+1. Identify key entities in the transcript (companies, products, people, features, concepts)
+2. Match those entities against the provided context data above
+3. Generate a specific, actionable request that combines the transcript intent with relevant context details
+
+SMART REQUEST EXAMPLES:
+- If transcript mentions competitors found in context → "Based on our competitive intelligence about [COMPETITOR], explain our positioning advantages regarding [SPECIFIC TOPIC]"
+- If discussing products/features in context → "Using our meeting brief insights, address [SPECIFIC FEATURE/TOPIC] and our strategic approach"
+- If mentioning people/contacts from context → "Provide guidance on [TOPIC] considering [PERSON]'s role and our account strategy"
+- If pricing/deals discussed → "Compare our pricing strategy against competitors using our competitive intelligence"
+- Testing phrases → "Testing the agent"
+- Generic business topics → "Analyze this business statement for competitive insights"
+
+GOAL: Create the most specific, context-rich request possible that will help the agent provide targeted, valuable insights.`;
+
+      const userMessage = `Analyze this transcript: "${transcriptLine}"`;
+
+      console.log('🔍 AUTH MANAGER: System context length:', systemContext.length);
+      console.log('🔍 AUTH MANAGER: User message:', userMessage);
+      
+      const modelsUrl = 'https://api.salesforce.com/einstein/platform/v1/models/sfdc_ai__DefaultGPT4Omni/chat-generations';
+      const requestBody = {
+        messages: [
+          {
+            role: "system",
+            content: systemContext
+          },
+          {
+            role: "user", 
+            content: userMessage
+          }
+        ],
+        localization: {
+          defaultLocale: "en_US",
+          inputLocales: [
+            {
+              locale: "en_US",
+              probability: 1.0
+            }
+          ],
+          expectedLocales: ["en_US"]
+        },
+        tags: {}
+      };
+
+      const response = await fetch(modelsUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.modelsToken}`,
+          'Content-Type': 'application/json',
+          'x-sfdc-app-context': 'EinsteinGPT',
+          'x-client-feature-id': 'ai-platform-models-connected-app'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      console.log('🔍 AUTH MANAGER: Relevancy check response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('🔍 AUTH MANAGER: Relevancy check failed:', errorText);
+        throw new Error(`Relevancy check failed: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      // Parse response according to chat-generations API documentation
+      const generations = (result as any)?.generationDetails?.generations;
+      let relevancyResult = 'Waiting_For_More_Context';
+      
+      if (generations && generations.length > 0) {
+        // Find the assistant response (the API should return the model's response)
+        const assistantResponse = generations.find((gen: any) => gen.role === 'assistant' || gen.role === 'system');
+        if (assistantResponse && assistantResponse.content) {
+          relevancyResult = assistantResponse.content;
+        } else if (generations[generations.length - 1]?.content) {
+          // Fallback: use the last generation's content
+          relevancyResult = generations[generations.length - 1].content;
         }
       }
+      
+      console.log('🔍 AUTH MANAGER: Raw API response structure:', JSON.stringify(result, null, 2));
+      
+      console.log('🔍 AUTH MANAGER: Relevancy result:', relevancyResult);
+      
+      // Determine if response indicates relevance
+      const isRelevant = !relevancyResult.includes('Waiting_For_More_Context');
+      
+      // Emit debug event for Models API response
+      this.mainWindow?.webContents.send('debug:models_api_response', {
+        relevant: isRelevant,
+        reason: relevancyResult.trim(),
+        timestamp: new Date().toISOString()
+      });
+      
+      // Also send to overlay manager via custom debug handler
+      if (this.mainWindow && (this.mainWindow as any).sendDebugEvent) {
+        (this.mainWindow as any).sendDebugEvent('models_api_response', {
+          relevant: isRelevant,
+          reason: relevancyResult.trim(),
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      return relevancyResult.trim();
+
+    } catch (error) {
+      console.error('🔍 AUTH MANAGER: Relevancy check failed:', error);
+      
+      // Emit debug event for error
+      this.mainWindow?.webContents.send('debug:models_api_response', {
+        relevant: false,
+        reason: `Error: ${error}`,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Also send to overlay manager via custom debug handler
+      if (this.mainWindow && (this.mainWindow as any).sendDebugEvent) {
+        (this.mainWindow as any).sendDebugEvent('models_api_response', {
+          relevant: false,
+          reason: `Error: ${error}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      // Return default on error to avoid breaking the flow
+      return 'Waiting_For_More_Context';
     }
-    
-    return actionItems.length > 0 ? actionItems : ['Review meeting notes and follow up on key discussion points'];
   }
 
-  private extractQuestions(text: string): string[] {
-    const questions: string[] = [];
-    const lines = text.split('\n');
-    
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.includes('?') || 
-          trimmed.toLowerCase().includes('question') ||
-          trimmed.toLowerCase().includes('concern') ||
-          trimmed.toLowerCase().includes('unclear')) {
-        const questionText = trimmed.replace(/^[-•*\d+\.]/, '').trim();
-        if (questionText.length > 0) {
-          questions.push(questionText);
-        }
+
+
+  // Agent API session management (Updated to match reference project approach)
+  public async createAgentSession(competitiveIntelligence: string, preMeetingBrief: string): Promise<void> {
+    try {
+      console.log('🤖 AUTH MANAGER: Creating Agent API session with OAuth client credentials...');
+      
+      // Use the same OAuth client credentials approach as the reference project
+      await this.ensureAgentToken();
+      
+      const sessionUrl = `https://api.salesforce.com/einstein/ai-agent/v1/agents/${this.agentId}/sessions`;
+      
+      // Generate random UUID for session key
+      const randomUUID = this.generateUUID();
+      
+      // Use the reference project's approach - context variables WITH instanceConfig
+      const requestBody = {
+        externalSessionKey: randomUUID,
+        instanceConfig: { endpoint: `https://${this.agentDomain}` },
+        variables: [
+          {
+            name: "Pre_Meeting_Brief",
+            type: "Text",
+            value: preMeetingBrief
+          },
+          {
+            name: "Competitive_Insights",
+            type: "Text", 
+            value: competitiveIntelligence
+          }
+        ]
+      };
+
+      console.log('🤖 AUTH MANAGER: Agent session request (OAuth approach):', JSON.stringify(requestBody, null, 2));
+
+      const response = await fetch(sessionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.agentToken}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('🤖 AUTH MANAGER: Agent session creation failed:', errorText);
+        console.error('🤖 AUTH MANAGER: Response status:', response.status, response.statusText);
+        console.error('🤖 AUTH MANAGER: Response headers:', Object.fromEntries(response.headers.entries()));
+        throw new Error(`Failed to create Agent session: ${response.status} ${response.statusText}. Details: ${errorText}`);
       }
+
+      const result = await response.json() as any;
+      this.agentSessionId = result.sessionId;
+      this.agentSequenceId = 0; // Reset sequence counter
+      
+      console.log('🤖 AUTH MANAGER: ✅ Agent session created with OAuth approach:', this.agentSessionId);
+      
+      // Emit debug event for Agent session creation
+      this.mainWindow?.webContents.send('debug:agent_session_created', {
+        sessionId: this.agentSessionId,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error('🤖 AUTH MANAGER: Agent session creation failed:', error);
+      throw error;
     }
-    
-    return questions.length > 0 ? questions : ['No specific questions or concerns identified'];
   }
 
-  private extractNextSteps(text: string): string[] {
-    const nextSteps: string[] = [];
-    const lines = text.split('\n');
-    
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.toLowerCase().includes('next step') ||
-          trimmed.toLowerCase().includes('moving forward') ||
-          trimmed.toLowerCase().includes('going forward') ||
-          (trimmed.match(/^\d+\./) && trimmed.toLowerCase().includes('next'))) {
-        const stepText = trimmed.replace(/^\d+\./, '').replace(/^[-•*]/, '').trim();
-        if (stepText.length > 0) {
-          nextSteps.push(stepText);
-        }
-      }
+  // Send streaming message to Agent API (Updated to match reference project SSE approach)
+  public async sendAgentMessage(message: string, onChunk: (chunk: string) => void, onComplete: (fullResponse: string) => void, onError: (error: string) => void): Promise<void> {
+    // Prevent concurrent requests to avoid 423 Locked errors
+    if (this.agentRequestInProgress) {
+      console.log('🤖 AUTH MANAGER: Agent request already in progress, skipping duplicate request');
+      onError('Agent request already in progress');
+      return;
     }
+
+    this.agentRequestInProgress = true;
     
-    return nextSteps.length > 0 ? nextSteps : ['Schedule follow-up meeting to review progress'];
+    try {
+      if (!this.agentSessionId) {
+        throw new Error('No active Agent session. Create session first.');
+      }
+
+      console.log('🤖 AUTH MANAGER: Sending message to Agent API with SSE streaming:', message);
+      
+      // Emit debug event for Agent message
+      this.mainWindow?.webContents.send('debug:agent_message', {
+        type: 'sending',
+        data: message,
+        sequenceId: this.agentSequenceId + 1,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Also send to overlay manager via custom debug handler
+      if (this.mainWindow && (this.mainWindow as any).sendDebugEvent) {
+        (this.mainWindow as any).sendDebugEvent('agent_message', {
+          type: 'sending',
+          data: message,
+          sequenceId: this.agentSequenceId + 1,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      // Ensure we have a valid Agent API token
+      await this.ensureAgentToken();
+      
+      this.agentSequenceId++; // Increment sequence for each message
+      
+      const messageUrl = `https://api.salesforce.com/einstein/ai-agent/v1/sessions/${this.agentSessionId}/messages/stream`;
+      
+      const requestBody = {
+        message: {
+          sequenceId: this.agentSequenceId,
+          type: "Text",
+          text: message
+        }
+      };
+
+      console.log('🤖 AUTH MANAGER: SSE request body:', JSON.stringify(requestBody, null, 2));
+
+      const response = await fetch(messageUrl, {
+        method: 'POST',
+        headers: {
+          'Accept': 'text/event-stream',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.agentToken}`,
+          'Cache-Control': 'no-cache'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      console.log('🤖 AUTH MANAGER: SSE response status:', response.status, response.statusText);
+      console.log('🤖 AUTH MANAGER: SSE response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('🤖 AUTH MANAGER: Agent message failed:', errorText);
+        this.agentRequestInProgress = false; // Reset flag
+        onError(`Agent API call failed: ${response.status} ${response.statusText}. Details: ${errorText}`);
+        return;
+      }
+
+      // Handle Server-Sent Events (SSE) streaming like the reference project
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = '';
+      let buffer = '';
+
+      if (!reader) {
+        this.agentRequestInProgress = false; // Reset flag
+        onError('Failed to get response stream');
+        return;
+      }
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            console.log('🤖 AUTH MANAGER: SSE stream completed');
+            break;
+          }
+          
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+          
+          // Process complete lines from buffer
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+          
+          for (const line of lines) {
+            if (line.trim() === '') continue;
+            
+            if (line.startsWith('data: ')) {
+              try {
+                const jsonData = line.slice(6); // Remove "data: " prefix
+                if (jsonData.trim() === '') continue;
+                
+                const eventData = JSON.parse(jsonData);
+                console.log('🤖 AUTH MANAGER: SSE event received:', eventData);
+                
+                // Handle different event types - events have wrapper structure with message property
+                const messageData = eventData.message || eventData;
+                
+                if (messageData.type === 'TextChunk') {
+                  // TextChunk: streaming text content
+                  const chunkText = messageData.message || '';
+                  fullResponse += chunkText;
+                  onChunk(chunkText);
+                  
+                  // Emit debug event for chunk
+                  this.mainWindow?.webContents.send('debug:agent_message', {
+                    type: 'chunk',
+                    data: chunkText,
+                    sequenceId: this.agentSequenceId,
+                    timestamp: new Date().toISOString()
+                  });
+                } else if (messageData.type === 'Inform') {
+                  // Inform: complete message (this is what we're getting!)
+                  const completeMessage = messageData.message || '';
+                  if (completeMessage) {
+                    fullResponse = completeMessage; // Use complete message
+                  }
+                  
+                  // Emit debug event for complete message
+                  this.mainWindow?.webContents.send('debug:agent_message', {
+                    type: 'complete',
+                    data: completeMessage,
+                    sequenceId: this.agentSequenceId,
+                    timestamp: new Date().toISOString()
+                  });
+                } else if (messageData.type === 'EndOfTurn') {
+                  // Response complete
+                  console.log('🤖 AUTH MANAGER: Agent response complete');
+                  
+                  // Emit debug event for end of turn
+                  this.mainWindow?.webContents.send('debug:agent_message', {
+                    type: 'end_of_turn',
+                    data: fullResponse,
+                    sequenceId: this.agentSequenceId,
+                    timestamp: new Date().toISOString()
+                  });
+                  onComplete(fullResponse);
+                  this.agentRequestInProgress = false; // Reset flag
+                  return;
+                } else if (messageData.type === 'ProgressIndicator') {
+                  // Optional: could show progress to user
+                  console.log('🤖 AUTH MANAGER: Agent progress:', messageData.message || 'Working on it');
+                  
+                  // Emit debug event for progress
+                  this.mainWindow?.webContents.send('debug:agent_message', {
+                    type: 'progress',
+                    data: messageData.message || 'Working on it',
+                    sequenceId: this.agentSequenceId,
+                    timestamp: new Date().toISOString()
+                  });
+                }
+              } catch (parseError) {
+                console.warn('🤖 AUTH MANAGER: Failed to parse SSE event:', line, parseError);
+              }
+            }
+          }
+        }
+        
+        // If we reach here without EndOfTurn, complete with what we have
+        if (fullResponse) {
+          console.log('🤖 AUTH MANAGER: SSE stream ended, completing with accumulated response');
+          onComplete(fullResponse);
+        } else {
+          onError('No response received from Agent API');
+        }
+        
+      } finally {
+        reader.releaseLock();
+        this.agentRequestInProgress = false; // Reset flag
+      }
+
+    } catch (error) {
+      console.error('🤖 AUTH MANAGER: Agent message streaming failed:', error);
+      this.agentRequestInProgress = false; // Reset flag
+      onError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  // Generate UUID for session key
+  private generateUUID(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   }
 
   public cleanup(): void {
@@ -1009,5 +1556,12 @@ Format the response as a structured summary.`;
       this.oauthServer.close();
       this.oauthServer = null;
     }
+    
+    // Reset Agent API session and token
+    this.agentSessionId = null;
+    this.agentSequenceId = 0;
+    this.agentToken = null;
+    this.agentTokenExpiry = 0;
   }
 }
+

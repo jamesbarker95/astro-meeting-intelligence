@@ -1,187 +1,142 @@
-# Astro - Real-Time Meeting Intelligence Platform
+# 🚀 Astro - AI Meeting Assistant (Proof of Concept)
 
-**v1.0.0: OAuth + Session Management** 🚀
+⚠️ **IMPORTANT: This is a Proof of Concept with hardcoded credentials**
 
-Astro is a comprehensive meeting assistant that captures audio, transcribes it in real-time, generates insights, and distributes them through desktop overlays and Slack channels.
+## 🎯 Overview
 
-## 🎯 Current Status (v1.0.0)
+Astro is an AI-powered meeting assistant that provides real-time transcription and intelligent insights during meetings. This POC demonstrates:
 
-**✅ Working Features:**
-- OAuth 2.0 authentication for Salesforce and Slack
-- Session creation and management with Heroku backend
-- Real-time WebSocket communication
-- Desktop Electron app with secure token storage
-- Session dashboard on Heroku backend
-
-**🔄 Coming Soon:**
-- Real-time audio capture and transcription
-- Meeting insights generation
-- Desktop overlay functionality
-- Slack integration for insights distribution
+- **Real-time Speech-to-Text** using AssemblyAI
+- **Dual Audio Capture** (system audio + microphone via BlackHole)
+- **AI-Powered Insights** using Salesforce Models API and Agent API
+- **Modern Electron UI** with transparent overlays and progressive transcript display
+- **OAuth Integration** with Salesforce and Slack
+- **WebSocket Communication** between Electron app and Heroku backend
 
 ## 🏗️ Architecture
 
-- **Electron Desktop App**: User interface, OAuth flows, session management
-- **Heroku Backend**: WebSocket server, API orchestration, session management
-- **External APIs**: Salesforce (OAuth, data, models), Slack (OAuth, messaging)
-
-## 📁 Project Structure
-
 ```
-astro-project/
-├── electron-app/          # Electron desktop application
-│   ├── src/
-│   │   ├── main/         # Main process (auth, websocket, audio)
-│   │   ├── renderer/     # Renderer process (UI)
-│   │   └── shared/       # Shared utilities
-│   ├── assets/           # Static assets
-│   └── config/           # Configuration files
-├── heroku-backend/       # Flask backend
-│   ├── app/
-│   │   ├── api/          # API endpoints (auth, sessions, insights)
-│   │   ├── services/     # Business logic
-│   │   ├── models/       # Data models
-│   │   └── utils/        # Utilities
-│   ├── templates/        # Web interface templates
-│   └── config/           # Configuration
-├── docs/                 # Documentation
-└── scripts/              # Build and deployment scripts
+┌─────────────────┐    WebSocket    ┌──────────────────┐
+│   Electron App  │ ◄──────────────► │  Heroku Backend  │
+│                 │                  │                  │
+│ • Audio Capture │                  │ • Session Mgmt   │
+│ • UI Overlays   │                  │ • AI Processing  │
+│ • OAuth         │                  │ • WebSocket Hub  │
+└─────────────────┘                  └──────────────────┘
+         │                                     │
+         ▼                                     ▼
+┌─────────────────┐                  ┌──────────────────┐
+│   AssemblyAI    │                  │ Salesforce APIs  │
+│ Real-time STT   │                  │ • Models API     │
+└─────────────────┘                  │ • Agent API      │
+                                     └──────────────────┘
 ```
 
-## 🚀 Quick Start
+## 🚨 Security Notice
+
+**This POC contains hardcoded API credentials for rapid development:**
+- Salesforce Client IDs/Secrets
+- Slack API Keys
+- AssemblyAI API Key
+- Deepgram API Key (legacy)
+
+**Do not use in production!** Credentials should be externalized before production deployment.
+
+## 🛠️ Setup & Installation
 
 ### Prerequisites
 - Node.js 18+
-- Python 3.9+
-- Heroku account
-- Salesforce developer account
-- Slack app setup
+- Python 3.8+
+- macOS (for audio capture via BlackHole)
+- BlackHole 2ch virtual audio device
 
-### 1. Clone and Setup
-```bash
-git clone <your-repo-url>
-cd astro-project
-```
-
-### 2. Electron App Setup
+### Electron App Setup
 ```bash
 cd electron-app
 npm install
-npm run dist
+npm run build
+npm start
 ```
 
-### 3. Heroku Backend Setup
-```bash
-cd heroku-backend
-# Deploy to Heroku (see deployment section)
-```
-
-### 4. Configure OAuth Apps
-- Set up Salesforce Connected App
-- Set up Slack App
-- Update client IDs in the code (or use environment variables)
-
-### 5. Launch
-- Install the DMG from `electron-app/dist/`
-- Launch Astro from Applications
-- Authenticate with Salesforce and Slack
-- Start a session!
-
-## 🔧 Development
-
-### Electron App Development
-```bash
-cd electron-app
-npm run dev          # Start development mode
-npm run build        # Build for production
-npm run dist         # Create distributable
-```
-
-### Heroku Backend Development
+### Heroku Backend Setup
 ```bash
 cd heroku-backend
 pip install -r requirements.txt
-python -m flask run  # Local development
+python -m flask run
 ```
 
-## 🌐 Deployment
+## 🎵 Audio Setup (macOS)
 
-### Heroku Backend
-```bash
-cd heroku-backend
-heroku create your-app-name
-git push heroku main
-```
+1. Install BlackHole 2ch from [existential.audio](https://existential.audio/blackhole/)
+2. Create Multi-Output Device in Audio MIDI Setup:
+   - Add BlackHole 2ch
+   - Add your speakers/headphones
+3. Set system output to "Astro-Meeting (Aggregate)" device
+4. Grant microphone permissions to the app
 
-### Electron App
+## ✨ Key Features
+
+### Real-time Transcription
+- Captures both system audio and microphone
+- Progressive transcript display (interim → final)
+- Millisecond-accurate timestamps
+
+### AI Insights
+- Relevancy filtering via Salesforce Models API
+- Intelligent responses via Salesforce Agent API
+- Real-time notifications for new insights
+
+### Modern UI
+- Transparent overlay system
+- Material Design icons
+- Progressive transcript rendering
+- Search functionality for direct AI queries
+
+### Session Management
+- Start/stop sessions with calendar integration
+- Microphone toggle during sessions
+- Session state persistence
+
+## 🔧 Development
+
+### Building
 ```bash
 cd electron-app
-npm run dist  # Creates DMG for macOS
+npm run build
 ```
 
-## 🔐 Authentication Setup
+### Packaging
+```bash
+npm run dist
+```
 
-### Salesforce Connected App
-1. Go to Setup > App Manager > New Connected App
-2. Enable OAuth Settings
-3. Add callback URL: `https://localhost:3000/oauth/salesforce/callback`
-4. Add scopes: `api`, `refresh_token`, `offline_access`
+Creates DMG file in `electron-app/dist/`
 
-### Slack App
-1. Create new app at api.slack.com
-2. Add OAuth & Permissions
-3. Add redirect URL: `https://localhost:3000/oauth/slack/callback`
-4. Add scopes: `chat:write`, `channels:read`
+## 📝 Current Status
 
-## 📊 Session Management
+✅ **Completed:**
+- Real-time audio capture and transcription
+- AI insights pipeline
+- Modern transparent UI
+- Session management
+- OAuth authentication
+- WebSocket communication
 
-Sessions are managed through the Heroku backend:
-- Create sessions via Electron app
-- View active sessions at `https://your-heroku-app.herokuapp.com/sessions`
-- Real-time session status updates via WebSocket
+🚧 **POC Limitations:**
+- Hardcoded credentials
+- No error recovery
+- Limited testing
+- macOS only
 
-## 🔧 Configuration
+## 🚀 Next Steps (Post-POC)
 
-### Environment Variables (Optional)
-The app includes default OAuth credentials for development. For production:
-
-**Electron App:**
-- `SALESFORCE_CLIENT_ID`
-- `SALESFORCE_CLIENT_SECRET`
-- `SLACK_CLIENT_ID`
-- `SLACK_CLIENT_SECRET`
-- `HEROKU_BACKEND_URL`
-
-**Heroku Backend:**
-- `SALESFORCE_CLIENT_ID`
-- `SALESFORCE_CLIENT_SECRET`
-- `SLACK_BOT_TOKEN`
-- `SLACK_SIGNING_SECRET`
-
-## 🐛 Troubleshooting
-
-### Common Issues
-1. **Keychain prompts**: Use the latest version (v1.0.0) which uses in-memory storage
-2. **Button not working**: Ensure you're using the correct button IDs (`salesforce-btn`, `slack-btn`)
-3. **Session not starting**: Check Heroku backend is running and accessible
-4. **OAuth errors**: Verify callback URLs match your app settings
-
-### Debug Mode
-The Electron app opens DevTools by default. Check the console for detailed logs.
-
-## 📝 License
-
-MIT License
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+1. **Security**: Externalize all credentials
+2. **Error Handling**: Add comprehensive error recovery
+3. **Testing**: Unit and integration tests
+4. **Cross-platform**: Windows/Linux support
+5. **Performance**: Optimize for longer meetings
+6. **Deployment**: Production-ready deployment pipeline
 
 ---
 
-**v1.0.0** - OAuth + Session Management ✅  
-**Next**: Audio Capture + Transcription 🎤
+**Built with:** Electron, TypeScript, Python, Flask, WebSockets, AssemblyAI, Salesforce APIs

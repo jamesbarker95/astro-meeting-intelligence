@@ -53,10 +53,9 @@
             transform: translateX(-50%);
             width: 50%;
             height: 60px;
-            background: #ff0000 !important;
-            border: 3px solid #00ff00 !important;
+            background: rgba(255, 255, 255, 0.95);
             border-radius: 0 0 6px 6px;
-            box-shadow: 0 2px 10px rgba(255, 255, 255, 0.5);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -466,28 +465,28 @@
     <!-- Menu Bar -->
     <div class="menu-bar">
         <button id="salesforce-btn" class="menu-button auth-disconnected" title="Salesforce Authentication">
-            <img src="../icons/salesforce-icon.png" alt="Salesforce">
+            <img src="../../icons/salesforce-icon.png" alt="Salesforce">
         </button>
         <button id="slack-btn" class="menu-button auth-disconnected" title="Slack Authentication">
-            <img src="../icons/slack_icon.png" alt="Slack">
+            <img src="../../icons/slack_icon.png" alt="Slack">
         </button>
         <button id="summary-btn" class="menu-button" title="Meeting Summary">
-            <img src="../icons/meeting_summary_icon.png" alt="Summary">
+            <img src="../../icons/meeting_summary_icon.png" alt="Summary">
         </button>
         <button id="agent-btn" class="menu-button" title="Agent Responses">
-            <img src="../icons/agent_icon.png" alt="Agent">
+            <img src="../../icons/agent_icon.png" alt="Agent">
         </button>
         <button id="transcript-btn" class="menu-button" title="Transcript">
-            <img src="../icons/transcript_icon.png" alt="Transcript">
+            <img src="../../icons/transcript_icon.png" alt="Transcript">
         </button>
         <button id="audio-btn" class="menu-button" title="Audio Capture">
-            <img src="../icons/audio_icon.png" alt="Audio">
+            <img src="../../icons/audio_icon.png" alt="Audio">
         </button>
         <button id="session-btn" class="menu-button" title="Session Control">
-            <img src="../icons/start_stop_session.png" alt="Session">
+            <img src="../../icons/start_stop_session.png" alt="Session">
         </button>
         <button id="debug-btn" class="menu-button" title="Debug Panel">
-            <img src="../icons/debug_icon.png" alt="Debug">
+            <img src="../../icons/debug_icon.png" alt="Debug">
         </button>
     </div>
 
@@ -606,7 +605,6 @@
         <!-- Toasts will be added here dynamically -->
     </div>
 
-    <script src="audio-manager.js"></script>
     <script src="renderer.js"></script>
 </body>
 </html>

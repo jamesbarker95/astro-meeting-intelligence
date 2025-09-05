@@ -10,6 +10,9 @@ interface AssemblyAIConfig {
   apiKey: string;
   sampleRate: number;
   formatTurns: boolean;
+  interimResults: boolean;
+  punctuate: boolean;
+  formatText: boolean;
 }
 
 interface TranscriptData {
@@ -30,7 +33,10 @@ export class AssemblyAIService extends EventEmitter {
     this.config = {
       apiKey,
       sampleRate: 16000,
-      formatTurns: true
+      formatTurns: false,        // Changed: Don't wait for complete conversational turns
+      interimResults: true,      // Added: Enable interim transcript updates
+      punctuate: true,           // Added: Better sentence flow
+      formatText: true           // Added: Proper capitalization
     };
   }
 
@@ -39,12 +45,16 @@ export class AssemblyAIService extends EventEmitter {
       try {
         const params = new URLSearchParams({
           sample_rate: this.config.sampleRate.toString(),
-          format_turns: this.config.formatTurns.toString()
+          format_turns: this.config.formatTurns.toString(),
+          interim_results: this.config.interimResults.toString(),
+          punctuate: this.config.punctuate.toString(),
+          format_text: this.config.formatText.toString()
         });
 
         const wsUrl = `wss://streaming.assemblyai.com/v3/ws?${params}`;
         
-        console.log('🎵 ASSEMBLYAI: Connecting to:', wsUrl);
+        console.log('🎵 ASSEMBLYAI: Connecting with v3 streaming API:', wsUrl);
+        console.log('🎵 ASSEMBLYAI: Config - format_turns: false, interim_results: true, punctuate: true');
         
         this.ws = new WebSocket(wsUrl, {
           headers: {
@@ -103,18 +113,25 @@ export class AssemblyAIService extends EventEmitter {
 
       case 'Turn':
         const transcript = message.transcript || '';
-        const formatted = message.turn_is_formatted || false;
-        const endOfTurn = message.end_of_turn || false;
-
+        const endOfTurnConfidence = message.end_of_turn_confidence || 0;
+        
         if (transcript) {
+          // Use end_of_turn_confidence to determine if this is likely a final transcript
+          // Higher confidence (> 0.7) suggests the speaker has finished speaking
+          const isFinal = endOfTurnConfidence > 0.7;
+          
           const transcriptData: TranscriptData = {
             transcript,
             confidence: 1.0, // AssemblyAI doesn't provide confidence in streaming
-            isFinal: formatted && endOfTurn,
+            isFinal,
             timestamp: Date.now()
           };
 
-          console.log(`🎵 ASSEMBLYAI: Transcript - Final: ${transcriptData.isFinal}, Text: "${transcript.substring(0, 50)}..."`);
+          const assemblyTimestamp = new Date().toISOString();
+          console.log(`🎵 ASSEMBLYAI [${assemblyTimestamp}]: Transcript - Final: ${transcriptData.isFinal} (confidence: ${endOfTurnConfidence.toFixed(3)}), Text: "${transcript.substring(0, 50)}..." (${transcript.length} chars)`);
+          
+          const emitTimestamp = new Date().toISOString();
+          console.log(`🎵 ASSEMBLYAI [${emitTimestamp}]: Emitting transcript to AudioManager`);
           this.emit('transcript', transcriptData);
         }
         break;
@@ -127,7 +144,7 @@ export class AssemblyAIService extends EventEmitter {
         break;
 
       default:
-        console.log('🎵 ASSEMBLYAI: Unknown message type:', msgType, message);
+        console.log('🎵 ASSEMBLYAI: Unhandled message type:', msgType);
         break;
     }
   }

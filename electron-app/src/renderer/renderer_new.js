@@ -351,121 +351,33 @@ async function handleSessionToggle() {
 
 async function handleStartAudioCapture() {
   try {
-    console.log('Start audio capture button clicked');
-    showToast('notification', 'Audio Setup', 'Looking for BlackHole audio device...');
+    console.log('Starting audio capture...');
+    const result = await window.electronAPI.startAudioCapture();
     
-    // Get available audio devices
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    console.log('DEBUG: Total devices found:', devices.length);
-    
-    console.log('DEBUG: All available devices:');
-    devices.forEach((device, index) => {
-      console.log(`  ${index}: ${device.kind} - "${device.label}" (ID: ${device.deviceId})`);
-    });
-    
-    const audioInputs = devices.filter(device => device.kind === 'audioinput');
-    console.log('DEBUG: Audio input devices:', audioInputs.length);
-    audioInputs.forEach((device, index) => {
-      console.log(`  Input ${index}: "${device.label}"`);
-    });
-    
-    // Look for BlackHole device
-    const blackHoleDevice = audioInputs.find(device => 
-      device.label.toLowerCase().includes('blackhole')
-    );
-    
-    if (!blackHoleDevice) {
-      throw new Error('BlackHole device not found. Please check Audio MIDI Setup.');
-    }
-    
-    console.log('Found BlackHole device:', blackHoleDevice.label);
-    showToast('notification', 'Device Found', `Connecting to: ${blackHoleDevice.label}`);
-    
-    // Request access to BlackHole device
-    const constraints = {
-      audio: {
-        deviceId: { exact: blackHoleDevice.deviceId },
-        sampleRate: 16000,
-        channelCount: 2,
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false
+    if (result.success) {
+      updateAudioStatus(true);
+      isAudioCapturing = true;
+      
+      // Show transcript panel if not already visible
+      if (!uiState.panels.transcript) {
+        togglePanel('transcript');
       }
-    };
-    
-    const systemAudioStream = await navigator.mediaDevices.getUserMedia(constraints);
-    console.log('Successfully captured system audio stream from BlackHole device!');
-    console.log('System Stream settings:', systemAudioStream.getAudioTracks()[0].getSettings());
-    
-    // Start system audio capture
-    const systemSuccess = await audioManager.startSystemAudioCapture(systemAudioStream);
-    if (!systemSuccess) {
-      throw new Error('Failed to start system audio capture');
+    } else {
+      throw new Error(result.error || 'Failed to start audio capture');
     }
-    
-    console.log('System audio capture started, now starting microphone...');
-    showToast('notification', 'System Audio', 'System audio connected, starting microphone...');
-    
-    // Start microphone capture
-    const micSuccess = await audioManager.startMicrophoneCapture();
-    if (!micSuccess) {
-      throw new Error('Failed to start microphone capture');
-    }
-    
-    console.log('Both system and microphone audio capture started!');
-    
-    // Initialize AssemblyAI transcription in main process
-    console.log('🎵 RENDERER: Starting AssemblyAI transcription...');
-    try {
-      await window.electronAPI.startAudioCapture();
-      console.log('🎵 RENDERER: AssemblyAI transcription started successfully');
-    } catch (error) {
-      console.error('🎵 RENDERER: Failed to start AssemblyAI transcription:', error);
-      // Continue anyway - audio capture still works without transcription
-    }
-    
-    updateAudioStatus(true);
-    isAudioCapturing = true;
-    
-    // Show transcript panel if not already visible
-    if (!uiState.panels.transcript) {
-      togglePanel('transcript');
-    }
-    
-    showToast('notification', 'Audio Active', `Dual audio capture started: ${blackHoleDevice.label} + Microphone!`);
-    
   } catch (error) {
-    console.error('Audio capture error:', error);
+    console.error('Start audio capture error:', error);
     showToast('error', 'Audio Start Failed', error.message);
   }
 }
 
 async function handleStopAudioCapture() {
   try {
-    console.log('Stop audio capture button clicked');
-    showToast('notification', 'Stopping Audio', 'Stopping audio capture...');
-    
-    // Stop AssemblyAI transcription in main process
-    console.log('🎵 RENDERER: Stopping AssemblyAI transcription...');
-    try {
-      await window.electronAPI.stopAudioCapture();
-      console.log('🎵 RENDERER: AssemblyAI transcription stopped successfully');
-    } catch (error) {
-      console.error('🎵 RENDERER: Failed to stop AssemblyAI transcription:', error);
-      // Continue anyway
-    }
-    
-    // Stop browser-side audio capture
-    if (audioManager) {
-      await audioManager.stopAudioCapture();
-      console.log('Browser-side audio capture stopped');
-    }
+    console.log('Stopping audio capture...');
+    const result = await window.electronAPI.stopAudioCapture();
     
     updateAudioStatus(false);
     isAudioCapturing = false;
-    
-    showToast('notification', 'Audio Stopped', 'Audio capture stopped successfully');
-    
   } catch (error) {
     console.error('Stop audio capture error:', error);
     showToast('error', 'Audio Stop Failed', error.message);
@@ -641,183 +553,9 @@ async function checkInitialStatus() {
   }
 }
 
-// Setup microphone control handlers
-function setupMicrophoneHandlers() {
-  if (window.electronAPI) {
-    // Handle microphone toggle requests from main process
-    window.electronAPI.onMicrophoneToggleRequest(async () => {
-      console.log('Microphone toggle requested');
-      if (audioManager) {
-        const isMicActive = audioManager.isMicrophoneActive();
-        if (isMicActive) {
-          await audioManager.stopMicrophoneOnly();
-          console.log('Microphone stopped via toggle');
-          // Notify main process of state change
-          window.electronAPI.updateMicrophoneState(false);
-        } else {
-          await audioManager.startMicrophoneOnly();
-          console.log('Microphone started via toggle');
-          // Notify main process of state change
-          window.electronAPI.updateMicrophoneState(true);
-        }
-      }
-    });
-
-    // Handle microphone start requests
-    window.electronAPI.onMicrophoneStartRequest(async () => {
-      console.log('Microphone start requested');
-      if (audioManager) {
-        await audioManager.startMicrophoneOnly();
-        console.log('Microphone started via request');
-        // Notify main process of state change
-        window.electronAPI.updateMicrophoneState(true);
-      }
-    });
-
-    // Handle microphone stop requests
-    window.electronAPI.onMicrophoneStopRequest(async () => {
-      console.log('Microphone stop requested');
-      if (audioManager) {
-        await audioManager.stopMicrophoneOnly();
-        console.log('Microphone stopped via request');
-        // Notify main process of state change
-        window.electronAPI.updateMicrophoneState(false);
-      }
-    });
-
-    // Set up microphone event listeners after audio manager is available
-    if (audioManager) {
-      audioManager.addEventListener('microphone-started', () => {
-        console.log('Audio manager: microphone started event');
-        window.electronAPI.updateMicrophoneState(true);
-      });
-
-      audioManager.addEventListener('microphone-stopped', () => {
-        console.log('Audio manager: microphone stopped event');
-        window.electronAPI.updateMicrophoneState(false);
-      });
-    } else {
-      console.warn('Audio manager not available for microphone event listeners');
-    }
-  }
-}
-
-// Setup audio capture listener for auto-start from main process
-function setupAudioCaptureListener() {
-  console.log('🎵 RENDERER: Setting up audio capture listener...');
-  console.log('🎵 RENDERER: electronAPI available:', !!window.electronAPI);
-  console.log('🎵 RENDERER: onStartAudioCapture available:', !!(window.electronAPI && window.electronAPI.onStartAudioCapture));
-  
-  if (window.electronAPI && window.electronAPI.onStartAudioCapture) {
-    console.log('🎵 RENDERER: Registering start-audio-capture listener');
-    window.electronAPI.onStartAudioCapture(async () => {
-      console.log('🎵 RENDERER: Received start-audio-capture event from main process');
-      try {
-        if (audioManager) {
-          console.log('🎵 RENDERER: Starting complete browser-side audio capture...');
-          
-          // Get available audio devices
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          console.log('🎵 RENDERER: Total devices found:', devices.length);
-          
-          console.log('🎵 RENDERER: All available devices:');
-          devices.forEach((device, index) => {
-            console.log(`  ${index}: ${device.kind} - "${device.label}" (ID: ${device.deviceId})`);
-          });
-          
-          const audioInputs = devices.filter(device => device.kind === 'audioinput');
-          console.log('🎵 RENDERER: Audio input devices:', audioInputs.length);
-          audioInputs.forEach((device, index) => {
-            console.log(`  Input ${index}: "${device.label}"`);
-          });
-          
-          // Look for BlackHole device
-          const blackHoleDevice = audioInputs.find(device => 
-            device.label.toLowerCase().includes('blackhole')
-          );
-          
-          if (!blackHoleDevice) {
-            throw new Error('BlackHole device not found. Please check Audio MIDI Setup.');
-          }
-          
-          console.log('🎵 RENDERER: Found BlackHole device:', blackHoleDevice.label);
-          
-          // Request access to BlackHole device
-          const constraints = {
-            audio: {
-              deviceId: { exact: blackHoleDevice.deviceId },
-              sampleRate: 16000,
-              channelCount: 2,
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false
-            }
-          };
-          
-          const systemAudioStream = await navigator.mediaDevices.getUserMedia(constraints);
-          console.log('🎵 RENDERER: Successfully captured system audio stream from BlackHole device!');
-          console.log('🎵 RENDERER: System Stream settings:', systemAudioStream.getAudioTracks()[0].getSettings());
-          
-          // Start system audio capture
-          const systemSuccess = await audioManager.startSystemAudioCapture(systemAudioStream);
-          if (!systemSuccess) {
-            throw new Error('Failed to start system audio capture');
-          }
-          
-          console.log('🎵 RENDERER: System audio capture started, now starting microphone...');
-          
-          // Start microphone capture
-          const micSuccess = await audioManager.startMicrophoneCapture();
-          if (!micSuccess) {
-            throw new Error('Failed to start microphone capture');
-          }
-          
-          console.log('🎵 RENDERER: Both system and microphone audio capture started!');
-          console.log('🎵 RENDERER: Browser audio capture started successfully');
-          
-          // Update microphone state to active since we just started
-          window.electronAPI.updateMicrophoneState(true);
-        } else {
-          console.error('🎵 RENDERER: Audio manager not available');
-        }
-      } catch (error) {
-        console.error('🎵 RENDERER: Failed to start browser audio capture:', error);
-        showToast('error', 'Audio Start Failed', error.message);
-      }
-    });
-    console.log('🎵 RENDERER: Audio capture listener registered successfully');
-  } else {
-    console.warn('🎵 RENDERER: onStartAudioCapture not available');
-  }
-
-  if (window.electronAPI && window.electronAPI.onStopAudioCapture) {
-    window.electronAPI.onStopAudioCapture(async () => {
-      console.log('🛑 RENDERER: Received stop-audio-capture event from main process');
-      try {
-        if (audioManager) {
-          console.log('🛑 RENDERER: Stopping browser-side audio capture...');
-          await audioManager.stopAudioCapture();
-          console.log('🛑 RENDERER: Browser audio capture stopped successfully');
-          
-          // Update microphone state to inactive since we just stopped
-          window.electronAPI.updateMicrophoneState(false);
-        } else {
-          console.error('🛑 RENDERER: Audio manager not available');
-        }
-      } catch (error) {
-        console.error('🛑 RENDERER: Failed to stop browser audio capture:', error);
-      }
-    });
-  } else {
-    console.warn('🛑 RENDERER: onStopAudioCapture not available');
-  }
-}
-
 // Initialize the application
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('🚀 RENDERER: DOM loaded, setting up new overlay UI');
-  console.log('🚀 RENDERER: Window location:', window.location.href);
-  console.log('🚀 RENDERER: electronAPI available:', !!window.electronAPI);
+  console.log('DOM loaded, setting up new overlay UI');
   
   // Test electronAPI availability
   if (window.electronAPI) {
@@ -829,22 +567,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   
   try {
-    // Initialize audio manager
-    console.log('Initializing audio manager...');
-    audioManager = new window.RendererAudioManager();
-    console.log('Audio manager initialized');
-    
     // Setup event listeners
     setupEventListeners();
     
     // Setup WebSocket events
     setupWebSocketEvents();
-    
-    // Setup microphone control handlers
-    setupMicrophoneHandlers();
-    
-    // Setup audio capture listener
-    setupAudioCaptureListener();
     
     // Check initial status
     await checkInitialStatus();
